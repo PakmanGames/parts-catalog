@@ -1,0 +1,9 @@
+allowBuilds:
+  # tsx and drizzle-kit run on esbuild; its install script sets up the native binary.
+  esbuild: true
+  # Optional native extras pulled in by Testcontainers (SSH Docker hosts) and Next.js (image
+  # optimization), none of which this app uses.
+  cpu-features: false
+  protobufjs: false
+  sharp: false
+  ssh2: false
