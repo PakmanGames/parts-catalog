@@ -4,6 +4,8 @@
 > **Input:** the generated `mock_data/mock_a/parts_export.csv` (125,653,360 bytes), profiled on 2026-10-10.
 > **Method:** DuckDB 1.5.6 and a small Python script, with every number counted on the full file.
 > Section 9 has the scripts that reproduce every number.
+> **T0.3 decided the open questions in section 8** (see 8.1), which changes some rules below: each changed rule is marked **(T0.3)**, and the rule tables and normalizer steps in section 4 are the ones to implement.
+> The counts are still the ones measured under the T0.1 rules.
 
 ## 1. Summary
 
@@ -77,12 +79,12 @@ This profile therefore re-emits every line with its real line number first (sect
 
 | CSV column | PRD field | Postgres type | Nullable | Notes |
 | --- | --- | --- | --- | --- |
-| `Part Number` | part number: `part_number`, and `part_number_key` from it | `text` | No | Trimmed, as written. Uses `A-Z`, `a-z`, `0-9`, `-`, and `/`. 600 blank (P7). No value is empty after `normalize_key`. |
-| `NSN` | None (NATO Stock Number) | Not stored | - | **Recommend dropping.** No requirement uses it, 32% of rows leave it blank, and it comes in three formats, one of them truncated (P30). |
-| `Description` | None | `text` | Yes | **Recommend keeping** for display only, so the buyer can confirm what a part is while quoting. Never blank in this file, 583 distinct values, at most 55 characters, upper case. Not part of identity or search. |
-| `Supplier` | supplier: `supplier`, and `supplier_key` from it | `text` | No | 40 suppliers, each written six ways (P10). Display spelling is trimmed with inner spaces collapsed. |
-| `Qty On Hand` | quantity | `integer` | No | Whole units. 0 to 25,000 after cleaning. `0` is a real value (140,827 rows), not a sentinel. |
-| `Unit Price` | price | `numeric(12, 2)` | No | US dollars (section 7). Scale 2 is confirmed: every 4-decimal value ends in `00` (P20). 0.04 to 15,839.85 after cleaning, and no zero prices. |
+| `Part Number` | part number: `part_number`, and `part_number_key` from it | `text` | No | Trimmed, and **(T0.3)** upper-cased for display (A13). Uses `A-Z`, `a-z`, `0-9`, `-`, and `/`. 600 blank (P7). No value is empty after `normalize_key`. |
+| `NSN` | None (NATO Stock Number) | Not stored (D20) | - | **Recommend dropping.** No requirement uses it, 32% of rows leave it blank, and it comes in three formats, one of them truncated (P30). |
+| `Description` | None | **(T0.3)** Not stored (D20) | - | Recommended keeping for display only, so the buyer can confirm what a part is while quoting. Never blank in this file, 583 distinct values, at most 55 characters, upper case. Not part of identity or search. |
+| `Supplier` | supplier: `supplier`, and `supplier_key` from it | `text` | No | 40 suppliers, each written six ways (P10). Display spelling is trimmed with inner spaces collapsed, and **(T0.3)** is the supplier's most common spelling (A13). |
+| `Qty On Hand` | quantity | `integer` | **(T0.3)** Yes, when blank or `N/A` (A19) | Whole units. 0 to 25,000 after cleaning. `0` is a real value (140,827 rows), not a sentinel. |
+| `Unit Price` | price | `numeric(12, 2)` | **(T0.3)** Yes, when blank or `CALL` (A19) | US dollars (section 7). Scale 2 is confirmed: every 4-decimal value ends in `00` (P20). 0.04 to 15,839.85 after cleaning, and no zero prices. |
 | `Lead Time` | lead time: `lead_time_days` | `integer` | Yes | Whole calendar days. Blank and `TBD` mean unknown (P24). 0 to 180 after cleaning. |
 | `Last Updated` | last updated: `last_updated` | `timestamptz` | No | Three formats, read as UTC (P28). |
 
@@ -230,14 +232,14 @@ Examples are verbatim, with spaces shown inside quotes when they matter.
 | P6 | Row | Repeated header row (without a BOM) | 3 | 161309, 574963, 949053 | Reject: `row is a repeated header`. |
 | P7 | Part Number | Blank | 600 | 276, 513, 538 | Reject: `part number is missing`. |
 | P8 | Part Number | Leading or trailing spaces (all 7,711 trailing, 4,632 also leading) | 7,711 | 122 `"MS21045L176  "`; 503 `"JANTX2N5921  "`; 695 `" D38999/24JG62SC "` | Normalize: trim. |
-| P9 | Part Number | Lower-case letters | 5,413 | 274 `un16492`; 331 `81h37815-5`; 892 `ph34161a` | None needed: `normalize_key` ignores case, and the display keeps the winning row's spelling (OQ5). |
-| P10 | Supplier | Written six ways (upper 146,357; lower 65,539; padded 73,000; trailing period 43,790; doubled space 36,130) | 364,816 | 2 `SUMMIT ELECTRONICS DISTRIBUTION`; 61 `harbor point industrial`; 5 `"  Coastal Avionics Supply "`; 39 `Continental Hose Co.`; 38 `"Allied  Fastener Supply"` | Normalize: trim and collapse each run of whitespace to one space for display. `normalize_key` already groups them. The display choice is OQ5. |
-| P11 | Qty On Hand | Blank or `N/A` (blank 11,988; `N/A` 3,570) | 15,558 | blank: 44, 106; `N/A`: 112, 827, 915 | Reject: `quantity is missing`. OQ4 asks whether to keep these parts instead. |
+| P9 | Part Number | Lower-case letters | 5,413 | 274 `un16492`; 331 `81h37815-5`; 892 `ph34161a` | **(T0.3)** Normalize: upper-case for display (A13). `normalize_key` already ignores case. |
+| P10 | Supplier | Written six ways (upper 146,357; lower 65,539; padded 73,000; trailing period 43,790; doubled space 36,130) | 364,816 | 2 `SUMMIT ELECTRONICS DISTRIBUTION`; 61 `harbor point industrial`; 5 `"  Coastal Avionics Supply "`; 39 `Continental Hose Co.`; 38 `"Allied  Fastener Supply"` | Normalize: trim and collapse each run of whitespace to one space. `normalize_key` already groups them. **(T0.3)** The display uses each supplier's most common spelling (A13). |
+| P11 | Qty On Hand | Blank or `N/A` (blank 11,988; `N/A` 3,570) | 15,558 | blank: 44, 106; `N/A`: 112, 827, 915 | **(T0.3)** Normalize: `NULL`, meaning unknown (A19). T0.1 rejected these. |
 | P12 | Qty On Hand | Thousands separators, always valid groups, always quoted | 1,174 | 24 `1,131`; 565 `2,058`; 1831 `1,053` | Normalize: remove the commas when the value matches `^\d{1,3}(,\d{3})+(\.\d+)?$`. |
 | P13 | Qty On Hand | Decimal point with a zero fraction (every one is `.0`) | 6,044 | 139 `142.0`; 155 `46.0`; 172 `12.0` | Normalize: drop a fraction made only of zeros. A non-zero fraction is rejected: `quantity is not a whole number` (0 rows). |
 | P14 | Qty On Hand | Negative, from -1 to -20 | 1,197 | 587 `-6`; 1294 `-11`; 1421 `-5` | Reject: `quantity is negative`. Stock on hand can't be below zero, and clamping to 0 would be a guess. |
-| P15 | Unit Price | Blank | 14,445 | 63, 150, 239 | Reject: `price is missing`. OQ4 asks whether to keep these parts instead. |
-| P16 | Unit Price | `CALL` (call for price) | 4,850 | 72, 727, 785 | Reject: `price is CALL`. OQ4 asks whether to keep these parts instead. |
+| P15 | Unit Price | Blank | 14,445 | 63, 150, 239 | **(T0.3)** Normalize: `NULL`, meaning unknown (A19). T0.1 rejected these. |
+| P16 | Unit Price | `CALL` (call for price) | 4,850 | 72, 727, 785 | **(T0.3)** Normalize: `NULL`, meaning unknown (A19). T0.1 rejected these. |
 | P17 | Unit Price | Leading `$` | 96,032 | 23 `$14.37`; 40 `$53.85`; 49 `$0.29` | Normalize: strip it. |
 | P18 | Unit Price | Trailing ` USD`, never together with `$` | 11,987 | 74 `1.44 USD`; 260 `1.56 USD`; 332 `271.88 USD` | Normalize: strip it. |
 | P19 | Unit Price | Thousands separators, only with `$`, always valid groups, always quoted | 5,331 | 527 `$9,361.09`; 772 `$5,356.66`; 1005 `$8,915.29` | Normalize: remove the commas when the value matches `^\d{1,3}(,\d{3})+(\.\d+)?$`. |
@@ -250,10 +252,10 @@ Examples are verbatim, with spaces shown inside quotes when they matter.
 | P26 | Lead Time | Units written out: days (209,342) and weeks (180,141) | 389,483 | 11 `56d`; 17 `90 days`; 45 `84 DAYS`; 6 `3 wks`; 21 `12 weeks` | Normalize: days as is, weeks times 7 (4.2, step 6). Plain numbers are days. |
 | P27 | Last Updated | Blank | 10,902 | 33, 40, 77 | Reject: `last updated is missing`. Without a timestamp the row can't be placed among a part's copies (C3). |
 | P28 | Last Updated | Three formats: ISO date 835,065; US `MM/DD/YYYY` 237,338; ISO date-time in UTC 119,094 | 1,191,497 | 3 `2025-04-04`; 2 `03/18/2026`; 6 `12/24/2024`; 15 `2025-09-26T11:20:42Z` | Normalize: see 4.2, step 7. |
-| P29 | Last Updated | After 2026-10-10, the day the file was generated, up to 2027-04-16 | 3,996 | 148 `2027-01-20T04:07:54Z`; 331 `2026-10-31`; 366 `2026-11-04` | Needs decision: OQ3. Until then, accept them, as C3 reads. |
-| P30 | NSN | Three formats: dashed 520,795; 13 digits 294,483; 12 digits 1,710 (the last digit cut off) | 816,988 | 5 `5935007738798`; 501 `252001311013`; 4338 `530501241626`, whose copy on line 231113 is `5305012416268` | Drop the column (section 3). If T0.3 keeps it: store 13 digits as `9999-99-999-9999`, and anything else as NULL. |
+| P29 | Last Updated | After 2026-10-10, the day the file was generated, up to 2027-04-16 | 3,996 | 148 `2027-01-20T04:07:54Z`; 331 `2026-10-31`; 366 `2026-11-04` | **(T0.3)** Accept them as written (A18). |
+| P30 | NSN | Three formats: dashed 520,795; 13 digits 294,483; 12 digits 1,710 (the last digit cut off) | 816,988 | 5 `5935007738798`; 501 `252001311013`; 4338 `530501241626`, whose copy on line 231113 is `5305012416268` | **(T0.3)** Not stored (D20). |
 | P31 | Identity | Part numbers that differ only by a dash or slash are different parts in this data | 251 groups | 1397 `NAS620986P` (`SCREW,MACHINE #8-32 UNC`, 26.12) and 22812 `NAS620-986P` (`SCREW,CAP,HEXAGON HEAD #8-32 UNC`, 0.20); 7247 `NAS1611-023R` (`BOLT,INTERNAL WRENCHING 1/4-28 UNF`, 2.54) and 234111 `NAS1611023R` (`NUT,PLAIN,HEXAGON 5/16-24 UNF`, 2.00); 1084704 `NAS1149500R` (`SCREW,TAPPING #10-32 UNF`, 0.62) and 1151084 `NAS1149-500R` (`NUT,PLAIN,HEXAGON #10-32 UNF`, 3.61) | Merge them, following C10 (OQ1, decided by PRD A16). |
-| P32 | Identity | The newest copy of a part is rejected while an older copy is valid | 1,473 groups | 2907 (2025-07-08, quantity missing) and 175949 (2025-05-27, valid); 2340 (2025-11-16, quantity missing) and 1111219 (2025-08-28, valid) | Needs decision: OQ2. |
+| P32 | Identity | The newest copy of a part is rejected while an older copy is valid | 1,473 groups | 2907 (2025-07-08, quantity missing) and 175949 (2025-05-27, valid); 2340 (2025-11-16, quantity missing) and 1111219 (2025-08-28, valid) | **(T0.3)** The newest row decides: when it is rejected, the part counts as absent from the file (A17). |
 
 **Why `STOCK` means 0 days (P25).**
 The plain number 0 appears 94,993 times, but no other form ever writes 0: there is no `0 days`, `0d`, or `0 wks`.
@@ -292,19 +294,19 @@ The first step that rejects a line gives its reason.
    - Part Number: trim (P8).
      If blank, reject: `part number is missing` (P7).
      If `normalize_key` of it is empty, reject: `part number has no letters or digits` (0 rows).
+     **(T0.3)** Upper-case it for display (A13).
    - Supplier: trim and collapse each run of whitespace to one space (P10).
      If blank, reject: `supplier is missing` (0 rows).
      If `normalize_key` of it is empty, reject: `supplier has no letters or digits` (0 rows).
 6. **Values.**
    - Qty On Hand: trim.
-     If blank or `N/A` in any case, reject: `quantity is missing` (P11).
+     **(T0.3)** If blank or `N/A` in any case, it is `NULL` (P11, A19).
      If it starts with `-` and a digit, reject: `quantity is negative` (P14).
      Remove thousands separators (P12), then drop a zero fraction (P13).
      If what's left isn't `^\d+$`, reject: `quantity is not a whole number`.
      If it's above 2,147,483,647, reject: `quantity is too large` (0 rows).
    - Unit Price: trim.
-     If blank, reject: `price is missing` (P15).
-     If `CALL` in any case, reject: `price is CALL` (P16).
+     **(T0.3)** If blank or `CALL` in any case, it is `NULL` (P15, P16, A19).
      Strip one leading `$` (P17) and one trailing `USD` in any case with the spaces before it (P18), then trim again.
      If it starts with `-` and a digit, reject: `price is negative` (P23).
      Remove thousands separators (P19), then drop zeros after the second decimal (P20).
@@ -325,7 +327,14 @@ The first step that rejects a line gives its reason.
    Read `YYYY-MM-DD` and `MM/DD/YYYY` as midnight UTC on that date, and `YYYY-MM-DDTHH:MM:SSZ` as that instant in UTC (P28).
    Anything else, or a date that doesn't exist such as `02/30/2025`, is rejected: `last updated is not a valid date` (0 rows).
 8. **Description.**
-   Trim, and store blank as NULL.
+   **(T0.3)** Not stored (D20).
+   It only matters for counting fields in step 3.
+
+**(T0.3) Rejected rows keep their part when they can (A17).**
+A row rejected at step 6 has a usable part number and supplier, so the normalizer still reads its Last Updated as in step 7.
+If that works, the rejected row carries its part and timestamp to the loader, which uses it to find each part's newest row.
+If the newest row is a rejected one, the part counts as absent from the file.
+Rows rejected at steps 2 to 5, or whose Last Updated is blank or invalid, carry nothing.
 
 **Why UTC for dates without a time.**
 The only explicit offset in the file is `Z`, so UTC puts all three formats on one clock.
@@ -345,12 +354,12 @@ The order is the precedence from 4.2, and each rejected row counts once, under i
 | 5 | `part number has no letters or digits` | 0 |
 | 6 | `supplier is missing` | 0 |
 | 7 | `supplier has no letters or digits` | 0 |
-| 8 | `quantity is missing` | 15,558 |
+| 8 | `quantity is missing`: **(T0.3)** no longer a reason (A19) | 15,558 |
 | 9 | `quantity is negative` | 1,197 |
 | 10 | `quantity is not a whole number` | 0 |
 | 11 | `quantity is too large` | 0 |
-| 12 | `price is missing` | 14,248 |
-| 13 | `price is CALL` | 4,792 |
+| 12 | `price is missing`: **(T0.3)** no longer a reason (A19) | 14,248 |
+| 13 | `price is CALL`: **(T0.3)** no longer a reason (A19) | 4,792 |
 | 14 | `price is negative` | 1,150 |
 | 15 | `price is not a number` | 0 |
 | 16 | `price has more than 2 decimal places` | 0 |
@@ -363,6 +372,10 @@ The order is the precedence from 4.2, and each rejected row counts once, under i
 | | Accepted | 1,154,284 |
 
 `rowsRead` in the summary should be the 1,203,487 data lines, so that accepted plus rejected always equals it.
+
+**(T0.3)** The counts above are under the T0.1 rules.
+Rows that reasons 8, 12, and 13 rejected are now accepted, or rejected for a later reason, so the totals change.
+WS-A's full import measures the new counts (PRD section 11), and `REJECT_REASONS` in `src/contracts/import-rows.ts` lists the 18 remaining reasons in this order.
 
 ## 5. Identity and duplicates
 
@@ -544,6 +557,17 @@ For part numbers, 3,130 parts would display in lower case.
 **OQ6. Confirm the column list.**
 This profile recommends keeping Description for display and dropping NSN (section 3).
 T0.3 decides the final columns (R2.1).
+
+### 8.1 Decisions (T0.3, 2026-10-11)
+
+| Question | Decision | Where it's recorded |
+| --- | --- | --- |
+| OQ1: dash and slash variants | Follow C10 and merge them, without asking. | PRD A16 |
+| OQ2: the newest copy is rejected | The newest row decides even when it is rejected, and the part then counts as absent from the file, so it is marked unavailable or not inserted. | PRD A17 |
+| OQ3: future dates | Accept them as written. | PRD A18 |
+| OQ4: unknown quantity or price | Keep the part, with the unknown value `NULL`. | PRD A19 |
+| OQ5: display spelling | Each supplier shows its most common spelling in the file, with ties broken by the newest row, and part numbers show in upper case. | PRD A13, D8 |
+| OQ6: column list | Store neither Description nor NSN. | PRD D20 |
 
 ## 9. Reproducing this profile
 
