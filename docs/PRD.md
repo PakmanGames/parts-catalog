@@ -705,6 +705,7 @@ Because it runs alone, it may edit shared files such as `package.json` scripts, 
 
 **WS-A Importer** (R1, NFR2)
 
+- **Briefs:** [`docs/briefs/WS-A1-row-reader.md`](briefs/WS-A1-row-reader.md) and [`docs/briefs/WS-A2-loader.md`](briefs/WS-A2-loader.md), with the shared rules in [`docs/briefs/phase-1-rules.md`](briefs/phase-1-rules.md).
 - **Owns:** `src/server/importer/`, `src/app/api/imports/`, and `scripts/import.ts`.
 - **Reads:** sections 4 (R1), 6, 7.1, 7.2, and 7.4, and `docs/data-profile.md`.
 - **Can split across two agents:** A1 builds the row normalizer and its unit tests, and A2 builds the loader (staging, deduplication, supplier spelling, `MERGE`, summary), the import routes, and the CLI.
@@ -725,6 +726,7 @@ Because it runs alone, it may edit shared files such as `package.json` scripts, 
 
 **WS-B Parts query** (R2, NFR1)
 
+- **Brief:** [`docs/briefs/WS-B-parts-query.md`](briefs/WS-B-parts-query.md), with the shared rules in [`docs/briefs/phase-1-rules.md`](briefs/phase-1-rules.md).
 - **Owns:** `src/server/parts/`, `src/app/api/parts/`, `src/app/api/suppliers/`, `scripts/bench/`, and index changes in `src/db/` and `drizzle/`.
 - **Reads:** sections 4 (R2), 7.1, 7.3, and 7.4, plus the distributions in `docs/data-profile.md`.
 - **Doesn't wait on WS-A:** it seeds 1.2M synthetic parts with `generate_series`, shaped like the real data, then re-runs the benchmark on real data in Phase 2.
@@ -750,6 +752,7 @@ Because it runs alone, it may edit shared files such as `package.json` scripts, 
 
 **WS-D Web UI** (R1.8, R2, and R3 user-facing)
 
+- **Brief:** [`docs/briefs/WS-D-web-ui.md`](briefs/WS-D-web-ui.md), with the shared rules in [`docs/briefs/phase-1-rules.md`](briefs/phase-1-rules.md).
 - **Owns:** everything under `src/app/` except `src/app/api/`, and `src/components/`.
 - **Reads:** sections 2, 7.4, and 7.5.
 - **Builds against** the Zod contracts and the JSON fixtures from T0.3, mocking the API until WS-A, WS-B, and WS-C land.
