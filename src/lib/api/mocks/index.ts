@@ -3,8 +3,8 @@
  * T2.1 deletes this folder when it connects the real API.
  *
  * It answers like the routes in PRD 7.4, with contract-valid bodies, the same status codes, and
- * `ErrorResponse` bodies, after a delay like a real request's. Its state lives in memory, so a full
- * page reload starts it over.
+ * the error messages of the fixtures in `tests/fixtures/api/`, after a delay like a real request's.
+ * Its state lives in memory, so a full page reload starts it over.
  *
  * To reach the cases that are hard to cause by hand, open any page with `?mock=<scenario>`.
  * The scenario lasts until the next full page load.
@@ -17,6 +17,10 @@
  */
 import type { ImportStatusResponse } from "@/contracts/imports";
 import { QuoteIdParam, type QuoteListItem, type QuoteResponse } from "@/contracts/quotes";
+import error409 from "../../../../tests/fixtures/api/error-409.json";
+import error413 from "../../../../tests/fixtures/api/error-413.json";
+import error503 from "../../../../tests/fixtures/api/error-503.json";
+import importFailed from "../../../../tests/fixtures/api/import-failed.json";
 import { IMPORT_DURATION_MS, NIGHTLY_SUMMARY, seedQuotes } from "./data";
 
 /** The upload limit of `POST /api/imports`, from Cloudflare's request body cap (PRD D10). */
@@ -102,7 +106,7 @@ function settleImport(s: State): void {
           status: "failed",
           ...finished,
           summary: null,
-          error: "Lost the connection to the database while importing. The catalog is unchanged.",
+          error: importFailed.error,
         }
       : {
           status: "succeeded",
@@ -114,14 +118,14 @@ function settleImport(s: State): void {
 
 async function postImport(s: State, body: RequestInit["body"]): Promise<Response> {
   if (!(body instanceof Blob)) {
-    return error(400, "The upload isn't gzip-compressed.");
+    return error(400, "The upload isn't valid gzip.");
   }
   if (body.size > MAX_UPLOAD_BYTES) {
-    return error(413, "The upload is over 100 MB.");
+    return json(413, error413);
   }
   const magic = new Uint8Array(await body.slice(0, 2).arrayBuffer());
   if (magic[0] !== 0x1f || magic[1] !== 0x8b) {
-    return error(400, "The upload isn't gzip-compressed.");
+    return error(400, "The upload isn't valid gzip.");
   }
   if (s.scenario === "import-conflict" && s.latestImport.status === "idle") {
     // Someone else's import, such as `pnpm import:csv`, started a moment before this upload.
@@ -129,7 +133,7 @@ async function postImport(s: State, body: RequestInit["body"]): Promise<Response
   }
   settleImport(s);
   if (s.latestImport.status === "running") {
-    return error(409, "An import is already running.");
+    return json(409, error409);
   }
   s.latestImport = running(Date.now());
   return json(202, s.latestImport);
@@ -151,7 +155,7 @@ function listQuotes(s: State): Response {
 function getQuote(s: State, rawId: string): Response {
   const id = QuoteIdParam.safeParse(rawId);
   const found = id.success && s.quotes.find((quote) => quote.id === id.data);
-  return found ? json(200, found) : error(404, "Quote not found.");
+  return found ? json(200, found) : error(404, `Quote ${rawId} doesn't exist.`);
 }
 
 /** Answers a request for `path` the way the real API would. */
@@ -164,7 +168,7 @@ export async function mockFetch(path: string, init: RequestInit = {}): Promise<R
   await delay(ms, init.signal);
 
   if (s.scenario === "error") {
-    return error(503, "Database unreachable: ECONNREFUSED");
+    return json(503, error503);
   }
   if (isUpload) {
     return postImport(s, init.body);

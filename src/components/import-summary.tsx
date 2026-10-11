@@ -5,7 +5,9 @@ import { cn } from "@/lib/utils";
 
 /**
  * Every count of an import's summary (PRD R1.6): what happened to the rows of the file, with
- * rejected rows by reason, and what happened to the parts in the catalog.
+ * rejected rows by reason, and what happened to the parts in the catalog. Parts whose newest row
+ * was rejected are listed with the rows, since that is about the file; the catalog counts them
+ * under "Marked unavailable" or not at all (A17).
  */
 export function ImportSummary({ summary }: { summary: Summary }) {
   const id = useId();
@@ -30,6 +32,7 @@ export function ImportSummary({ summary }: { summary: Summary }) {
             )}
           </Count>
           <Count label="Duplicates collapsed" value={summary.duplicatesCollapsed} />
+          <Count label="Parts whose newest row was rejected" value={summary.newestRejected} />
         </dl>
       </section>
       <section aria-labelledby={`${id}-parts`}>
@@ -40,8 +43,8 @@ export function ImportSummary({ summary }: { summary: Summary }) {
           <Count label="Inserted" value={summary.inserted} />
           <Count label="Updated" value={summary.updated} />
           <Count label="Unchanged" value={summary.unchanged} />
-          <Count label="Marked unavailable" value={summary.markedUnavailable} />
           <Count label="Made available again" value={summary.madeAvailable} />
+          <Count label="Marked unavailable" value={summary.markedUnavailable} />
         </dl>
       </section>
     </div>

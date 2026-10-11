@@ -2,28 +2,32 @@
 import type { ImportSummary } from "@/contracts/imports";
 import type { QuoteResponse } from "@/contracts/quotes";
 import { lineTotalCents } from "@/lib/money";
+import savedQuote from "../../../../tests/fixtures/api/quote.json";
+import createdQuote from "../../../../tests/fixtures/api/quote-created.json";
 
 /** How long a mock import runs before it finishes. */
 export const IMPORT_DURATION_MS = 8_000;
 
 /**
- * A nightly import of the full export: the data profile's line count and identity and date
- * rejections, with plausible part counts. Accepted rows minus distinct parts is
- * `duplicatesCollapsed`, and inserted, updated, and unchanged add up to the parts in the file.
+ * A nightly import of the full export: the data profile's line count and reject counts, with
+ * plausible part counts that satisfy both sums documented on `ImportSummary`.
  */
 export const NIGHTLY_SUMMARY: Omit<ImportSummary, "durationMs"> = {
   rowsRead: 1_203_487,
-  duplicatesCollapsed: 56_351,
+  duplicatesCollapsed: 44_163,
   rejected: {
     "row is empty": 605,
     "row has too few columns": 480,
     "row is a repeated header": 3,
     "part number is missing": 600,
+    "quantity is negative": 1_197,
+    "price is negative": 1_161,
     "last updated is missing": 10_902,
   },
+  newestRejected: 113,
   inserted: 1_024,
   updated: 25_310,
-  unchanged: 1_108_212,
+  unchanged: 1_118_030,
   markedUnavailable: 318,
   madeAvailable: 12,
 };
@@ -65,9 +69,16 @@ function quote(
   };
 }
 
+/** A quote from `tests/fixtures/api/`, renumbered and redated so it sorts among the others. */
+function fixture(id: number, hoursAgo: number, body: QuoteResponse): QuoteResponse {
+  return { ...body, id, createdAt: new Date(Date.now() - hoursAgo * HOUR_MS).toISOString() };
+}
+
 /**
- * Saved quotes, oldest first. They cover a long customer name, a quote with many lines, a free
- * line, the longest part number shape in the file (19 characters), and a total past $10 million.
+ * Saved quotes, oldest first, dated relative to now so a quote created in the mock is always
+ * newest. Besides the two fixture quotes, they cover a long customer name, a quote with many lines,
+ * a free line, the longest part number shape in the file (19 characters), and a total past
+ * $10 million.
  */
 export function seedQuotes(): QuoteResponse[] {
   return [
@@ -82,7 +93,7 @@ export function seedQuotes(): QuoteResponse[] {
       [771_402, "RNC55H9852FM", "Cascade Aerospace Parts", 25_000, "1249.99"],
       [771_403, "JANTX2N5921", "Orion Microcircuits", 12_000, "86.40"],
     ]),
-    quote(4, "Globex Corporation", 3 * 24, [
+    quote(4, "Pacific Rim Aviation Services", 3 * 24, [
       [10_001, "AN960C10L", "Riverside Precision Bolt", 1_000, "0.06"],
       [10_002, "MS24693-C274", "Riverside Precision Bolt", 500, "0.19"],
       [10_003, "NAS1611-032A", "Pioneer Seal & Gasket", 120, "0.35"],
@@ -104,10 +115,7 @@ export function seedQuotes(): QuoteResponse[] {
       26,
       [[208_330, "M39029/58-360-0001", "Northstar Defense Logistics", 50, "0.94"]],
     ),
-    quote(6, "Initech", 2, [
-      [42, "RNC55H9852FM", "Bay Aero Components", 10, "12.50"],
-      [43, "NAS1149-500R", "Highland Electrical Supply", 80, "18.10"],
-      [44, "MS21042L3", "Copperline Electronics", 3, "7.05"],
-    ]),
+    fixture(6, 5, savedQuote),
+    fixture(7, 2, createdQuote),
   ];
 }
