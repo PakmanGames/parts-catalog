@@ -504,7 +504,7 @@ Newest first, with no pagination (A12).
 }
 ```
 
-Returns `404` if the quote doesn't exist.
+Returns `404` if the quote doesn't exist, including when `:id` isn't a positive integer, since no quote has such an id.
 
 **`GET /api/health`**
 
