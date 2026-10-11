@@ -11,7 +11,9 @@
 import type { z } from "zod";
 import { ErrorResponse } from "@/contracts/common";
 import { ImportStatusResponse } from "@/contracts/imports";
-import { QuoteListResponse, QuoteResponse } from "@/contracts/quotes";
+import { type PartsQuery, PartsResponse } from "@/contracts/parts";
+import { type CreateQuoteRequest, QuoteListResponse, QuoteResponse } from "@/contracts/quotes";
+import { SuppliersResponse } from "@/contracts/suppliers";
 
 /** An error status from the API, with the message from its `ErrorResponse` body. */
 export class ApiError extends Error {
@@ -90,6 +92,42 @@ export function startImport(gzipped: Blob): Promise<ImportStatusResponse> {
     method: "POST",
     headers: { "Content-Type": "application/gzip" },
     body: gzipped,
+  });
+}
+
+/** `GET /api/parts`: one page of the catalog, searched, filtered, and sorted by the server. */
+export function listParts(query: PartsQuery, signal?: AbortSignal): Promise<PartsResponse> {
+  const params = new URLSearchParams();
+  if (query.q) {
+    params.set("q", query.q);
+  }
+  for (const supplier of query.supplier) {
+    params.append("supplier", supplier);
+  }
+  params.set("sort", query.sort);
+  params.set("dir", query.dir);
+  params.set("limit", String(query.limit));
+  if (query.cursor) {
+    params.set("cursor", query.cursor);
+  }
+  return request(PartsResponse, `/api/parts?${params}`, { signal });
+}
+
+/** `GET /api/suppliers`: one display spelling per supplier, sorted by name. */
+export function listSuppliers(signal?: AbortSignal): Promise<SuppliersResponse> {
+  return request(SuppliersResponse, "/api/suppliers", { signal });
+}
+
+/**
+ * `POST /api/quotes`: saves a quote and returns it as `GET /api/quotes/:id` would.
+ * Rejects with an `ApiError` with status `400` when the server refuses it, for example because a
+ * part is no longer available.
+ */
+export function createQuote(body: CreateQuoteRequest): Promise<QuoteResponse> {
+  return request(QuoteResponse, "/api/quotes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 

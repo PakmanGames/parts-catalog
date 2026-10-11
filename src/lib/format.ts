@@ -7,6 +7,7 @@
 
 const count = new Intl.NumberFormat("en-US");
 const dateTime = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" });
+const utcDate = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
 
 /** Formats a whole count with thousands separators, such as "1,203,487". */
 export function formatCount(value: number): string {
@@ -16,6 +17,20 @@ export function formatCount(value: number): string {
 /** Formats an ISO timestamp from the API in the browser's time zone, such as "Oct 10, 2026, 3:02 PM". */
 export function formatDateTime(iso: string): string {
   return dateTime.format(new Date(iso));
+}
+
+/**
+ * Formats the date of a part's last-updated timestamp, such as "Mar 18, 2026".
+ * The export's dates without a time are stored as midnight UTC (data profile P28), so the date is
+ * read in UTC; in the browser's zone, west of UTC, every one of them would show the day before.
+ */
+export function formatDate(iso: string): string {
+  return utcDate.format(new Date(iso));
+}
+
+/** Formats a lead time in whole days, such as "1 day" or "21 days". */
+export function formatLeadTime(days: number): string {
+  return days === 1 ? "1 day" : `${formatCount(days)} days`;
 }
 
 /** Formats a duration such as "0.4 s", "42 s", or "1 min 10 s". */
