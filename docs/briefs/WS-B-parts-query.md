@@ -58,7 +58,7 @@ Then stop, and tell the user you're waiting for T0.3.
    - the part number shapes and lengths;
    - quantity, price, and lead time percentiles, with lead time taking only its 16 values;
    - 12% zero stock;
-   - unknown values: about 1.4% of quantities, 1.7% of prices, and 1.5% of lead times (decision 2);
+   - unknown values: about 1.3% of quantities, 1.6% of prices, and 1.5% of lead times (A19);
    - a small share of unavailable parts.
 4. **A benchmark script** in `scripts/bench/`.
    - It runs the matrix in PRD 7.3, plus the supplier list.

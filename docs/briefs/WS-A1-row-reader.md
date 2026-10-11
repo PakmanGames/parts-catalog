@@ -28,64 +28,32 @@ Your reasons are what the buyer sees in the import summary (R1.6).
 One entry point, which WS-A2 calls:
 
 ```ts
-/** The result for one data line of the file. */
-export type RowResult =
-  | { line: number; ok: true; row: CleanRow; cleared: string[] }
-  | { line: number; ok: false; reason: string };
-
-/** Reads a parts export and yields one result per data line, in file order. */
-export function readRows(input: AsyncIterable<Uint8Array>): AsyncGenerator<RowResult>;
+/** Reads a parts export and yields one `NormalizedRow` per data line, in file order. */
+export function readRows(input: AsyncIterable<Uint8Array>): AsyncGenerator<NormalizedRow>;
 ```
 
 - **`input`:** the file's bytes.
   Node's file streams and `zlib` gunzip streams are both `AsyncIterable<Uint8Array>`, so the CLI and the upload route can both call it.
   Stream it: never hold the whole file in memory.
-- **`line`:** the physical line where the record starts, counting the header as line 1, so error messages point at real lines.
-- **`cleared`:** one reason for each value set to unknown, using the reason texts below, such as `quantity is negative`.
-- **`reason`:** the rejection reason, from the list below.
-- **`CleanRow`:** T0.3 is freezing this type in `src/contracts/`.
-  Until it lands, use a local type with exactly these fields, then switch to T0.3's type.
-  If T0.3's type doesn't fit these rules, tell the user instead of editing it.
-
-  | Field | Type | Value |
-  | --- | --- | --- |
-  | `partNumber` | `string` | Trimmed and upper-cased. |
-  | `supplier` | `string` | Trimmed, with each run of whitespace collapsed to one space, and the case kept as written. WS-A2 picks each supplier's display spelling from these. |
-  | `quantity` | `number \| null` | Whole units. |
-  | `price` | `string \| null` | An exact decimal string with two decimals, such as `"18.10"`. Never a JavaScript number. |
-  | `leadTimeDays` | `number \| null` | Whole days. |
-  | `lastUpdated` | `Date` | In UTC. |
+- **`NormalizedRow`:** frozen by T0.3 in `src/contracts/import-rows.ts`, and that file is your specification for the output.
+  An accepted line is a `CleanRow`.
+  A rejected line is a `RejectedRow` with its reason, and with its `identity` when its part number, supplier, and timestamp are usable, because WS-A2 needs it to find each part's newest row (A17).
+  If the contract doesn't fit the rules, tell the user instead of editing it.
 
 ## Rules
 
-Apply the steps in section 4.2 of the data profile in order, with these changes from the decisions.
+Apply the steps in section 4.2 of the data profile in order, with these changes from the decisions in `phase-1-rules.md` and PRD A17 to A19.
 
-| Step | The profile says | Do this instead |
+| Step | The profile says | Do instead |
 | --- | --- | --- |
 | 1. Decode | Strip the BOM, and decode a field that isn't valid UTF-8 as Windows-1252. | Strip the BOM. The only non-UTF-8 bytes are in Description, which isn't stored, so decoding as UTF-8 is enough. Prove it on the full file: no kept field may contain `U+FFFD`. |
 | 3. Column count | With more than 8 fields, join the middle fields as Description. | Split the same way, and discard the middle fields. Fewer than 8 fields is still rejected. |
 | 5. Identity | Trim the part number. | Trim it and upper-case it. |
-| 6. Values | Reject a quantity or price that is missing, `N/A`, `CALL`, negative, not a number, has too many decimals, or is too large. | Set that one value to NULL, keep the row, and add the reason to `cleared`. A blank or `TBD` lead time also gets a reason, so every NULL is explained. |
-| 7. Last updated | Reject a missing or invalid date. | No change. Dates in the future are accepted. |
+| 6. Values | Reject a missing or `N/A` quantity, and a missing or `CALL` price. | Store those as `null` and keep the row (A19). Every other bad value still rejects the row, as the profile says. |
 | 8. Description | Trim it, and store a blank as NULL. | Drop it. NSN is dropped too. |
 
-So a row is only ever rejected for one of these reasons, checked in this order:
-
-1. `row is empty`
-2. `row has too few columns`
-3. `row is a repeated header`
-4. `part number is missing`
-5. `part number has no letters or digits`
-6. `supplier is missing`
-7. `supplier has no letters or digits`
-8. `last updated is missing`
-9. `last updated is not a valid date`
-
-And a value is set to unknown for one of these reasons:
-
-- **Quantity:** `quantity is missing` (blank or `N/A`), `quantity is negative`, `quantity is not a whole number`, `quantity is too large`.
-- **Price:** `price is missing`, `price is CALL`, `price is negative`, `price is not a number`, `price has more than 2 decimal places`, `price is too large`.
-- **Lead time:** `lead time is missing` (blank or `TBD`), `lead time is not a number of days or weeks`, `lead time is too large`.
+Dates in the future are accepted (A18).
+`REJECT_REASONS` in the contract lists all 18 rejection reasons in the order they are checked, and the first failing check gives the reason.
 
 ## Things to get right
 
@@ -103,15 +71,16 @@ And a value is set to unknown for one of these reasons:
 ## Tests
 
 - **Unit tests for every rule:** one table-driven test per column, covering every value shape in section 3 of the data profile and every problem from P1 to P30 that still applies.
-- **Every reason above has a test,** including the ones that occur 0 times in this file.
+- **Every reason in `REJECT_REASONS` has a test,** including the ones that occur 0 times in this file.
 - **Precedence:** a row with several problems is rejected for the first failing step.
-  A row that is kept reports every value it cleared.
+  A row rejected for a bad value carries its `identity`, and a row rejected before its part number, supplier, and timestamp could be read doesn't.
 - **Line numbers:** across the header, empty lines, long rows, and quoted fields.
 - **The full file:** run `readRows` over the real export with a throwaway script outside the repo, and don't commit a test that needs the file.
   Report:
   - the total number of results, which must be 1,203,487;
   - accepted, and rejected by reason;
-  - values cleared, by reason;
+  - how many rejected rows carry an `identity`;
+  - how many quantities, prices, and lead times are `null`;
   - the time taken and the peak memory.
 
   Reconcile every count with a DuckDB query, adapting the ones in section 9 of the data profile, and explain any difference.
@@ -122,8 +91,7 @@ And a value is set to unknown for one of these reasons:
 - Every rule and every reason in this brief has a unit test.
 - The full-file counts are reconciled with DuckDB and listed in the PR, along with the time and memory.
 - No kept field from the full file contains `U+FFFD`.
-- The result uses T0.3's clean row type if T0.3 has merged by the time you finish.
-  Otherwise it uses the local type, and the PR says so.
+- Every result parses with `NormalizedRow` from the contract.
 - `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` pass.
 
 ## Out of scope
