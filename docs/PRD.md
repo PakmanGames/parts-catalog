@@ -1,6 +1,6 @@
 # Parts Catalog - Product Requirements
 
-> **Status:** Draft v0.9 - living doc, updated as new context comes in.
+> **Status:** Draft v0.10 - living doc, updated as new context comes in.
 > **Last updated:** 2026-10-11
 
 ## How to use this doc
@@ -615,6 +615,8 @@ The UI only needs to be functional and clear.
 | D15 | Serve a JSON API under `/api` with Route Handlers, which call plain functions in `src/server/`. | Server Components that query the database directly, with Server Actions for writes. | The interviewer asked for routes with a justified design (C9). An explicit API lets the UI workstream build against mocks in parallel. Since the UI matters least (C8), every requirement can also be demonstrated with plain HTTP requests. Keeping the logic in plain functions means it can be tested without HTTP. The cost is client-side data fetching for the table and one more layer than Server Components would need. | Accepted |
 | D16 | Each workstream writes Vitest tests for its own code against Postgres 18 in Testcontainers. Playwright browser tests are deferred. | Defer all tests; a shared Docker Compose test database; an in-memory fake Postgres. | Tests are how parallel agents prove their "done when" lists without waiting for each other, so they add no serial time. Testcontainers gives every test run its own database, so agents in separate worktrees can't clobber each other's data or ports. `COPY`, `MERGE`, and trigram search need a real Postgres. The costs are needing Docker and a few seconds of startup per test run. | Accepted |
 | D17 | Put the deployed site behind Cloudflare Access. | Build a login into the app; a public URL; DNS-only Cloudflare. | C5 means no auth in the app, but a public URL would let anyone import files or create quotes. Access adds a login at the edge with no app code. It needs Cloudflare's proxy, which brings the upload limits that D10 works around. | Accepted |
+| D18 | Define the Railway project in `.railway/railway.ts` and apply it with `railway config apply`. | `railway.json` config as code; settings made by hand in the dashboard or CLI and listed in `docs/deploy.md`. | Railway deprecated `railway.json`, which stops being read on 2026-12-01. The TypeScript file declares the whole project, including the database, its volume, the variables, and the custom domain, so a review covers all of it and the runbook doesn't have to repeat settings. The costs are a dev dependency on the `railway` SDK, a manual apply after changing the file because deploys don't read it (K17), and that an apply deletes anything the file leaves out. | Accepted |
+| D19 | Set Cloudflare's SSL/TLS mode to Full, not Full (strict), for the app's subdomain only, with a Configuration Rule. | Full (strict) with the CNAME set to DNS only until Railway issues a certificate; Full (strict) with Access and HTTPS-redirect exceptions for the ACME challenge path; a Cloudflare Tunnel. | Railway gets its certificate from Let's Encrypt over HTTP, and Cloudflare redirects that challenge to HTTPS and then to the Access login, so Railway serves its generic `*.up.railway.app` certificate and Full (strict) fails with error 526. Railway documents Full for proxied domains. A DNS-only switch would only work until the first renewal, about 60 days later, and the exceptions add three rules that break silently if changed. The cost is that Cloudflare encrypts the connection to Railway but doesn't check Railway's certificate. Other sites on the domain keep Full (strict). | Accepted |
 
 ## 10. Work breakdown
 
@@ -646,7 +648,7 @@ T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
 | `src/server/parts/`, `src/app/api/parts/`, `src/app/api/suppliers/`, `scripts/bench/` | WS-B |
 | `src/server/quotes/`, `src/app/api/quotes/` | WS-C |
 | Everything else under `src/app/`, and `src/components/` | WS-D |
-| Railway config, `docs/deploy.md` | WS-E |
+| `.railway/railway.ts`, `docs/deploy.md` | WS-E |
 
 ### Phase 0: foundations (blocking)
 
@@ -759,13 +761,13 @@ Because it runs alone, it may edit shared files such as `package.json` scripts, 
 
 - **Starts after:** T0.2 only, since it needs an app to deploy.
   It runs alongside everything else and never blocks another workstream.
-- **Owns:** the Railway config file and `docs/deploy.md`.
+- **Owns:** `.railway/railway.ts` (D18) and `docs/deploy.md`.
 - **Mostly manual:** account and dashboard steps in Railway and Cloudflare are done by hand.
   An agent can write the config and a step-by-step checklist.
 - **Delivers:**
   - A Railway project with the `web` service (the standalone Next.js build) and Postgres 18, connected over Railway's private network.
   - Migrations run as Railway's pre-deploy step.
-  - A subdomain as a proxied (orange cloud) CNAME, with SSL/TLS mode set to Full (strict).
+  - A subdomain as a proxied (orange cloud) CNAME, with SSL/TLS mode set to Full for that subdomain (D19).
   - A Cloudflare Access application that only lets in allowed email addresses (D17).
 - **Done when:** the subdomain shows the Access login and then the app, `GET /api/health` returns `ok`, and, once Phase 2 is done, uploading the full export through the deployed site finishes an import.
 

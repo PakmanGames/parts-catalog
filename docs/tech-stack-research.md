@@ -217,7 +217,8 @@ The subdomain is proxied, because Cloudflare Access needs it (PRD D17):
 
 - **Proxied (orange cloud), chosen:** adds Cloudflare's CDN and WAF, and lets you put Cloudflare Access (a Zero Trust login) in front of the site with no auth code.
   The 100 MB request body cap and the 100-second response timeout apply, which the gzipped upload and the `202` response stay within.
-  The SSL/TLS mode must be Full (strict), not Flexible.
+  The subdomain's SSL/TLS mode must be Full, not Flexible, which loops redirects.
+  Full (strict) doesn't work either, because Railway can't get its own certificate behind Cloudflare Access (PRD D19).
 - **DNS only (grey cloud), rejected:** the simplest setup, with no upload size cap from Cloudflare, but no Cloudflare Access, so anyone with the URL could use the app.
 
 Why this option: one platform and one deploy pipeline, the app and database share a private network and region, and there are no runtime limits beyond a normal Node server.
