@@ -1,6 +1,6 @@
 # Parts Catalog - Product Requirements
 
-> **Status:** Draft v0.8 - living doc, updated as new context comes in.
+> **Status:** Draft v0.9 - living doc, updated as new context comes in.
 > **Last updated:** 2026-10-10
 
 ## How to use this doc
@@ -665,15 +665,30 @@ T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
 - **Done when:** from a fresh clone, the README's commands bring up Postgres and the app, and `pnpm lint`, `pnpm test`, and `pnpm build` all pass.
 - **Out of scope:** domain tables, API routes other than health, and any feature UI, since those belong to T0.3 and Phase 1.
 
-**T0.3 Freeze contracts** - after T0.1 and T0.2
+**T0.3 Freeze contracts** - after T0.2; the parts schema and the fixtures also wait for T0.1
 
-- **Output:**
+T0.3 is the last single-agent step before the parallel workstreams, so it also fixes the known issues that would break parallel work (`docs/known-issues.md`).
+Because it runs alone, it may edit shared files such as `package.json` scripts, `compose.yaml`, `next.config.ts`, and the README.
+
+- **Can start before the data profile exists:**
+  - **K15:** turn off `cacheComponents` in `next.config.ts`, and check whether `partialPrefetching` still applies without it, so no `GET` route under `/api` is frozen at build time.
+  - **K2:** give each worktree its own dev database.
+    Make the host port configurable in `compose.yaml` (`"${DB_PORT:-5432}:5432"`), have the `dev` script pass `.env.local` to Compose, and make `pnpm db:migrate` and `pnpm import:csv` load `.env.local` after `.env` so it takes precedence.
+    Document the per-worktree `COMPOSE_PROJECT_NAME`, `DB_PORT`, and `DATABASE_URL` setup in the README.
+  - Zod schemas in `src/contracts/` for the requests and responses in 7.4 that don't depend on the `parts` columns: imports, suppliers, quotes, and health.
+- **Needs the data profile (T0.1):**
   - `src/db/schema.ts` and its migrations, finalized from the data profile: the hand-written migration for `pg_trgm` and `normalize_key`, the tables from 7.1, and the initial indexes from 7.3.
-  - Zod schemas in `src/contracts/` for every request and response in 7.4, plus the clean row type between the normalizer and the loader, with TypeScript types inferred from them.
+    Generate all of them on this one branch, in order, with the hand-written migration first, so Drizzle's migrator can't skip one (K1).
+  - The Zod schema for `GET /api/parts` and the clean row type between the normalizer and the loader, with TypeScript types inferred from all the schemas.
   - Two small CSV fixtures packed with the data traps, a "night 1" and a "night 2", with the database state each should produce, for WS-A.
     Night 2 drops, changes, adds, and re-adds parts, and both nights spell some part numbers and supplier names differently.
   - JSON response fixtures, for WS-D's mocks.
-- **Done when:** the migrations apply, the types compile, the fixtures are committed, and section 7 is marked frozen.
+- **Done when:**
+  - The migrations apply, the types compile, the fixtures are committed, and section 7 is marked frozen.
+  - `pnpm build` lists every `/api` route as dynamic (K15).
+  - Two worktrees can run `pnpm dev` at the same time against separate databases, and `pnpm db:migrate` in each targets its own database (K2).
+  - K2, K3, and K15 are moved to Resolved in `docs/known-issues.md`.
+  - `pnpm lint`, `pnpm test`, and `pnpm build` pass.
 
 ### Phase 1: parallel workstreams
 
