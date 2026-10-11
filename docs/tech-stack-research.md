@@ -1,25 +1,26 @@
 # Tech Stack Research
 
-Status: draft for discussion.
+Status: stack accepted (PRD D12).
 Last updated: 2026-10-10.
 Versions and platform limits were checked on that date and will drift.
 
 ## Goal
 
-Pick a stack for the Mock A take-home: ingest, clean, and deduplicate a messy supplier parts export into a usable catalog.
+Pick a stack for the Mock A take-home: import a messy nightly parts export into a catalog that a buyer can search, filter, and quote from.
 The priority is a working MVP under a tight time limit, so this doc favors the fewest moving parts.
 Notes on what would change at larger scale are collected in [Beyond the MVP](#beyond-the-mvp).
 
 The starting preference is Next.js with TypeScript, schema validation, Postgres, Railway (Hobby plan), and a domain on Cloudflare.
 Alternatives are included only where they solve a concrete problem for this project.
-Product requirements live in a separate PRD; this doc covers technology choices only.
+Product requirements, the schema, and the import design live in [`PRD.md`](PRD.md); this doc covers technology choices only.
+Where the two disagree, the PRD wins.
 
 ## The data
 
 The input is `mock_a/parts_export.csv`: about 1.2M rows and 126 MB, described by the generator as a messy export.
-1.2M rows is small for Postgres, but too big to hold in a web request's memory, a browser, or a Cloudflare Worker.
+1.2M rows is small for Postgres, but too big to hold in a browser or a Cloudflare Worker, or to parse inside a single web request.
 
-For the MVP, the file is split by hand into two halves of about 63 MB each, so each upload fits under Cloudflare's 100 MB request limit.
+For the MVP, the browser gzips the file before uploading it, which takes it to about 36 MB, well under Cloudflare's 100 MB request limit.
 See [Getting the file into the system](#getting-the-file-into-the-system).
 
 ## Recommendation at a glance
@@ -28,26 +29,26 @@ See [Getting the file into the system](#getting-the-file-into-the-system).
 |---|---|---|
 | App framework | Next.js 16 (App Router) + TypeScript | Your preference, and one codebase for UI and API |
 | Schema validation | Zod 4, alongside Drizzle for the database schema | Zod checks untrusted input at runtime; Drizzle defines the tables |
-| Database | Postgres on Railway | Set-based cleaning in SQL, fast bulk loads, fuzzy matching via `pg_trgm` |
+| Database | Postgres 17 on Railway | Set-based cleaning in SQL, fast bulk loads, `MERGE` for re-imports, substring search via `pg_trgm` |
 | Data access | Drizzle ORM + `pg` (node-postgres) | SQL-first and easy to mix with raw SQL for bulk loads |
-| Upload | Two CSV halves, each streamed through a Route Handler | Each half fits under Cloudflare's 100 MB cap, so no object storage is needed yet |
-| Bulk ingestion | Streaming `csv-parse` + Postgres `COPY` into a staging table | Flat memory use and fast loads; fine for the MVP, see [much larger files](#much-larger-files) |
-| Background work | A worker service on Railway, with pg-boss as the queue | Keeps the cleaning pass out of web requests with no extra infrastructure; Redis is the [scale-up path](#background-jobs-on-redis) |
-| Hosting | Everything on Railway, with Cloudflare DNS for a subdomain | One platform, a private network to the database, and no Worker limits |
+| Upload | The browser gzips the whole CSV and posts it to a Route Handler | 126 MB becomes about 36 MB, under Cloudflare's 100 MB cap, with no manual split or object storage |
+| Bulk ingestion | Streaming `csv-parse` + `COPY` into a temporary staging table, then one `MERGE`, all in one transaction | Flat memory use, fast loads, and crash safety for free; see [much larger files](#much-larger-files) |
+| Background work | In the web process for the MVP: the upload route responds `202` and imports in the background | No extra service; a worker with pg-boss is in the PRD's post-MVP backlog |
+| Hosting | Railway (web + Postgres) behind a proxied Cloudflare subdomain with Cloudflare Access | One platform, a private network to the database, and a login with no app code |
 | UI | Tailwind CSS 4 + shadcn/ui + TanStack Table | Fast to build, with server-side paging for large tables |
-| Testing | Deferred until after the MVP | See [Testing](#testing) |
+| Testing | Vitest + Testcontainers in the MVP; Playwright deferred | Parallel workstreams prove their work against a real Postgres; see [Testing](#testing) |
 
 The sections below explain each choice and what was considered instead.
 
 ## Next.js 16 and TypeScript
 
 Next.js 16.4 with React 19.3 is current.
-Use the App Router, Server Components for read-heavy pages, and Route Handlers or Server Actions for mutations.
+Use the App Router, with Route Handlers under `/api` for all data access (PRD D15).
 Build with `output: "standalone"` so the app runs as a plain Node server on Railway.
 
 Next.js should not run long work inside a request.
-The cleaning and deduplication pass over the whole import belongs in a worker process.
-The web app only starts that job and shows its status.
+For the MVP, the upload route responds `202` and runs the import in the background in the same process, for example with `after()`, and the UI polls for its status.
+A separate worker process is the post-MVP home for this work; see [Background work](#background-work).
 
 Turn on TypeScript `strict` and `noUncheckedIndexedAccess`.
 The second flag catches many row-parsing mistakes at compile time, because indexing into an array or record returns `T | undefined`.
@@ -95,14 +96,13 @@ Postgres fits this project well.
 
 - Set-based SQL (`INSERT ... SELECT`, `DISTINCT ON`, window functions) is the cleanest way to normalize and deduplicate a million rows.
 - `COPY` loads a million rows in seconds.
-- `pg_trgm` gives fuzzy matching on part numbers and descriptions, for catalog search and for spotting near-duplicates.
-- `INSERT ... ON CONFLICT` makes re-imports idempotent.
-- `jsonb` can keep each original raw row next to its cleaned version for auditing.
+- `pg_trgm` indexes make substring search on part numbers fast.
+- `MERGE ... WHEN NOT MATCHED BY SOURCE` (Postgres 17+) inserts new parts, updates changed ones, and marks missing ones unavailable in one statement, which makes re-imports idempotent.
 
 Railway Hobby allows Postgres volumes up to 5 GB.
-That is plenty: the parts file is 126 MB as CSV, and even with a staging copy, indexes, and raw `jsonb`, the database should stay in the low single-digit GB at most.
+That is plenty: the parts file is 126 MB as CSV, and even with indexes and the temporary staging copy during an import, the database should stay in the low single-digit GB at most.
 
-For local development, run Postgres in Docker with the same major version Railway uses.
+For local development, run Postgres in Docker with the same major version Railway uses, which is 17.
 
 ### Data access: Drizzle ORM
 
@@ -111,6 +111,8 @@ Drizzle (stable 0.45, with drizzle-kit 0.31 for migrations) is the recommendatio
 - Schemas are plain TypeScript, with no code generation step.
 - The query builder stays close to SQL, and raw SQL through the `sql` template is a first-class escape hatch.
   This project will need that for `COPY`, staging tables, and trigram queries.
+- Drizzle can define generated columns and GIN indexes with operator classes.
+  `CREATE EXTENSION`, the `normalize_key` SQL function, and `MERGE` can't be expressed in it, so they go in a hand-written migration or raw SQL.
 - `drizzle-zod` derives Zod schemas from tables.
 
 Risk: Drizzle 1.0 has been in beta for a long time.
@@ -128,25 +130,22 @@ Pick one and use it everywhere.
 
 ## Ingestion pipeline
 
-One import is made of two uploads, one per half of the file.
+The full design is in PRD section 7.2.
+In short:
 
-1. Stream each upload through `csv-parse` (7.x), so memory use stays flat regardless of file size.
+1. Stream the upload through gunzip and `csv-parse` (7.x), so memory use stays flat regardless of file size.
    `csv-parse` can also skip and report malformed rows, such as a wrong column count or broken quoting.
    Feeding the file straight to `COPY` instead would abort the whole load on the first malformed row.
-2. `COPY` the parsed rows into an all-`text` staging table, tagged with the import id.
-   Nothing is rejected for its content at this step, so nothing is silently lost.
-3. Once both halves are in, normalize and validate in a second pass over the whole import, in SQL or in TypeScript with Zod.
-   Record every rejected row and the reason in an errors table.
-   This pass must cover both halves together, or duplicates that span the split are missed.
-4. Upsert clean rows into the catalog tables, one transaction per batch.
-5. Show an import report: rows read, rows accepted, rows rejected by reason, and duplicates merged.
+2. Normalize each row in TypeScript with a hand-written Zod schema, which returns either a clean row or a rejection reason.
+3. In one transaction, `COPY` the clean rows into a temporary staging table, deduplicate with `DISTINCT ON`, and `MERGE` into the catalog.
+4. Show the import summary in the app: rows read, rows rejected by reason, duplicates collapsed, and parts inserted, updated, and marked unavailable.
 
-Steps 1 and 2 run inside the upload request and take seconds per half.
-Steps 3 to 5 run in the worker.
+One transaction is simpler than committing in batches, and it gives two things for free.
+A crash rolls everything back, so re-running is always safe.
+The buyer never sees a half-applied import, because Postgres keeps serving the previous snapshot until the commit.
 
-Staging raw rows first matters because a messy file needs several rounds of cleaning rules.
-With the raw rows in Postgres, changing a rule means re-running step 3, not re-uploading the file.
-Row counts can also always be reconciled against the source file.
+The staging table is temporary, not permanent.
+Changing a cleaning rule means re-running the import from the file, which is cheap at this size, instead of keeping raw rows and an errors table around.
 
 **DuckDB** (the `duckdb` CLI or `@duckdb/node-api`) is worth having locally to profile the file before writing rules.
 It can run SQL directly against the CSV without loading it anywhere.
@@ -157,29 +156,39 @@ It isn't recommended because it splits the codebase across two languages with no
 
 ### Getting the file into the system
 
-For the MVP, the browser uploads each half to a Route Handler, which streams the body into steps 1 and 2 above.
+For the MVP, the browser compresses the file and uploads it to a Route Handler in one request.
 
-- Send the file as the raw request body (`fetch(url, { method: "POST", body: file })`), not as multipart form data, so the handler can stream `request.body` without parsing a form.
+- Compress with the built-in `CompressionStream("gzip")`.
+  On the generated file, gzip takes 126 MB down to about 36 MB at the default level (45 MB at the fastest).
+  That is well under the 100 MB request body cap on Cloudflare's Free and Pro plans, so the subdomain can stay proxied and behind Cloudflare Access.
+- Send the compressed file as the raw request body with `Content-Type: application/gzip`, not as multipart form data, so the handler doesn't have to parse a form.
 - Use a Route Handler, not a Server Action: Server Actions cap request bodies at 1 MB by default.
 - Keep the upload route out of the `proxy.ts` matcher (Next.js 16's new name for middleware).
   When proxy runs, Next.js buffers the request body in memory and keeps only the first 10 MB by default.
-- Each half is about 63 MB, under the 100 MB request body cap on Cloudflare's Free and Pro plans, so the subdomain can stay proxied.
+- Respond `202` as soon as the body has arrived, and run the import in the background.
+  Cloudflare returns a 524 error if the origin takes more than 100 seconds to respond, and a full import could get close to that.
 
-When splitting the file, split on a row boundary so no record is cut in half, and keep the header row in both halves.
+Splitting the file into halves was considered and rejected.
+Each file is a full snapshot, and parts missing from it are marked unavailable, so importing only one half would wrongly hide the other half of the catalog.
 
-Uploading straight to object storage removes the manual split; see [File uploads](#file-uploads).
+The cap comes back if the compressed file ever nears 100 MB.
+Uploading straight to object storage removes it; see [File uploads](#file-uploads).
 
 ## Background work
 
-The web service should start long jobs, not run them.
-In the MVP, the long job is the cleaning pass (steps 3 to 5) over the whole import.
+For the MVP, the import runs in the background inside the web process, as described above.
+That is enough for one buyer and one import a night, and it adds no services.
+The cost is that a restart or deploy during an import loses it, although the transaction leaves the catalog unchanged and the buyer can upload again.
 
-Recommendation: a second Railway service that runs the same codebase with a different entry point (for example `tsx src/worker.ts`) and has no public domain.
+A separate worker is in the PRD's post-MVP backlog, for when imports need to survive restarts and deploys.
+When that happens, this is the plan.
+
+A second Railway service that runs the same codebase with a different entry point (for example `tsx src/worker.ts`) and has no public domain.
 Railway's Next.js guide uses the same layout.
 
 To hand jobs from the web app to the worker:
 
-- **pg-boss** (12.x) is the MVP choice.
+- **pg-boss** (12.x) is the first choice.
   It stores jobs in Postgres, so it adds no new infrastructure, and it supports retries, scheduling, and singleton jobs.
 - **BullMQ + Redis** is the scale-up path.
   See [Background jobs on Redis](#background-jobs-on-redis).
@@ -197,24 +206,24 @@ Moving to BullMQ later then only changes the wiring, not the job code.
 One Railway project with these services:
 
 - `web`: Next.js (standalone build), public, on a custom subdomain.
-- `worker`: the same repo with the worker entry point, and no public domain.
-- `postgres`: Railway Postgres, reached over the private network (`*.railway.internal`), so there's no egress cost and no public database endpoint.
+- `postgres`: Railway Postgres 17, reached over the private network (`*.railway.internal`), so there's no egress cost and no public database endpoint.
+- `worker` (post-MVP): the same repo with the worker entry point, and no public domain.
 
 Cloudflare's role is DNS: a CNAME for the subdomain (for example `parts.<your-domain>`) pointing at the Railway domain.
 
-Choose the proxy setting deliberately:
+The subdomain is proxied, because Cloudflare Access needs it (PRD D17):
 
-- **Proxied (orange cloud):** adds Cloudflare's CDN and WAF, and lets you put Cloudflare Access (a Zero Trust login) in front of the site with no auth code.
-  The 100 MB request body cap applies, which the split upload stays under.
-  The SSL/TLS mode must be Full, not Flexible.
-- **DNS only (grey cloud):** the simplest setup, with no upload size cap from Cloudflare.
+- **Proxied (orange cloud), chosen:** adds Cloudflare's CDN and WAF, and lets you put Cloudflare Access (a Zero Trust login) in front of the site with no auth code.
+  The 100 MB request body cap and the 100-second response timeout apply, which the gzipped upload and the `202` response stay within.
+  The SSL/TLS mode must be Full (strict), not Flexible.
+- **DNS only (grey cloud), rejected:** the simplest setup, with no upload size cap from Cloudflare, but no Cloudflare Access, so anyone with the URL could use the app.
 
 Why this option: one platform and one deploy pipeline, the app and database share a private network and region, and there are no runtime limits beyond a normal Node server.
 Hobby allows up to 48 vCPU and 48 GB of RAM per service, far more than this needs.
 
 Rough cost: the Hobby plan is $5/month, and that $5 is a usage credit.
 Railway bills RAM at $10/GB-month and CPU at $20/vCPU-month, by the minute.
-Three small, mostly idle services (web, worker, Postgres) should land around or slightly above the $5 credit.
+Two small, mostly idle services (web and Postgres) should land around the $5 credit, or slightly above it once the worker is added.
 Check the usage dashboard after the first week.
 
 ### Option B: Next.js on Cloudflare Workers, backend on Railway
@@ -254,7 +263,19 @@ Confirm they're available on Hobby before relying on them, or add a `pg_dump` cr
 - **Tailwind CSS 4 + shadcn/ui**, so components live in the repo as source code you own.
 - **TanStack Table** for the catalog and import views, with paging, sorting, and filtering done in SQL.
   Never send 1.2M rows to the browser.
-- **React Hook Form + Zod** for forms, or Server Actions that reuse the same Zod schemas.
+- **React Hook Form + Zod** for forms, posting to the `/api` routes and reusing the same Zod schemas (PRD D15).
+
+## Testing
+
+Vitest and Testcontainers are in the MVP (PRD D16), because the parallel workstreams prove their work with tests.
+Only Playwright is deferred.
+
+- **Vitest** (5.x) for unit and integration tests.
+  The cleaning and normalization rules are the highest-value tests in this project, so build table-driven tests from real messy rows.
+- **Testcontainers** (`@testcontainers/postgresql`) for integration tests against a real Postgres 17.
+  `COPY`, `MERGE`, and trigram queries can't be tested against an in-memory fake.
+  Each test run gets its own database container, so agents working in separate worktrees don't collide on data or ports.
+- **Playwright** (post-MVP) for the end-to-end flow: upload the file, wait for the import, and check the summary.
 
 ## Beyond the MVP
 
@@ -277,7 +298,7 @@ At billions of rows (hundreds of GB of CSV), these parts stop scaling:
 
 ### File uploads
 
-Replace the manual split with a presigned upload straight from the browser to object storage (a Railway Bucket or Cloudflare R2), using multipart uploads for large files.
+When the gzipped file nears Cloudflare's 100 MB cap, replace the single upload request with a presigned upload straight from the browser to object storage (a Railway Bucket or Cloudflare R2), using multipart uploads for large files.
 The file then never passes through Cloudflare's proxy or the Next.js server, so the 100 MB cap stops mattering.
 This is the pattern Railway's own Next.js guide uses.
 Both stores are S3-compatible, so `@aws-sdk/client-s3` works with either.
@@ -294,17 +315,6 @@ As job volume and job types grow, BullMQ on Redis (6.x) is the stronger long-ter
 The cost is one more service to run, pay for, and back up.
 Switch when queue load shows up in Postgres metrics, or when jobs need features pg-boss lacks.
 Railway's Next.js guide already uses this setup, so the migration path is well documented.
-
-### Testing
-
-Testing is deferred to keep the MVP fast.
-When it's added, in priority order:
-
-- **Vitest** (5.x) for unit tests.
-  The cleaning and normalization rules are the highest-value tests in this project, so build table-driven tests from real messy rows.
-- **Testcontainers** (`@testcontainers/postgresql`) for integration tests against a real Postgres.
-  `COPY` and trigram queries can't be tested against an in-memory fake.
-- **Playwright** for the end-to-end flow: upload both halves, run the import, and check the import report.
 
 ## Versions checked
 
