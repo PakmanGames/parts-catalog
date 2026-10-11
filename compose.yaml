@@ -1,4 +1,6 @@
 # Local development database. Tests don't use it: they start their own container (tests/global-setup.ts).
+# Run it through `pnpm compose`, which also reads `.env.local`, where a worktree can set its own
+# COMPOSE_PROJECT_NAME and DB_PORT to get a separate database (README, K2).
 name: parts-catalog
 
 services:
@@ -10,7 +12,7 @@ services:
       POSTGRES_PASSWORD: parts
       POSTGRES_DB: parts_catalog
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       # Postgres 18 images keep data in /var/lib/postgresql/18/docker, so mount the parent. A mount at
       # /var/lib/postgresql/data, where 17 and earlier kept it, makes the container refuse to start.
