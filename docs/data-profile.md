@@ -18,7 +18,7 @@ The most important findings are about identity, not formatting:
 - **`normalize_key` merges parts that look different.**
   In 251 duplicate groups, part numbers that differ only by a dash, such as `NAS1149500R` and `NAS1149-500R`, have different descriptions and prices that are a median 6.2 times apart.
   True copies of a part never differ in price by more than 25%.
-  C10 says these are the same part, so this needs a decision (OQ1).
+  C10 says these are the same part, and the PRD follows C10 (OQ1, decided by A16).
 - **The newest copy of a part is often unusable.**
   In 1,473 groups the newest row is rejected while an older copy is valid (OQ2).
 - **Some timestamps are in the future.**
@@ -252,7 +252,7 @@ Examples are verbatim, with spaces shown inside quotes when they matter.
 | P28 | Last Updated | Three formats: ISO date 835,065; US `MM/DD/YYYY` 237,338; ISO date-time in UTC 119,094 | 1,191,497 | 3 `2025-04-04`; 2 `03/18/2026`; 6 `12/24/2024`; 15 `2025-09-26T11:20:42Z` | Normalize: see 4.2, step 7. |
 | P29 | Last Updated | After 2026-10-10, the day the file was generated, up to 2027-04-16 | 3,996 | 148 `2027-01-20T04:07:54Z`; 331 `2026-10-31`; 366 `2026-11-04` | Needs decision: OQ3. Until then, accept them, as C3 reads. |
 | P30 | NSN | Three formats: dashed 520,795; 13 digits 294,483; 12 digits 1,710 (the last digit cut off) | 816,988 | 5 `5935007738798`; 501 `252001311013`; 4338 `530501241626`, whose copy on line 231113 is `5305012416268` | Drop the column (section 3). If T0.3 keeps it: store 13 digits as `9999-99-999-9999`, and anything else as NULL. |
-| P31 | Identity | Part numbers that differ only by a dash or slash are different parts in this data | 251 groups | 1397 `NAS620986P` (`SCREW,MACHINE #8-32 UNC`, 26.12) and 22812 `NAS620-986P` (`SCREW,CAP,HEXAGON HEAD #8-32 UNC`, 0.20); 7247 `NAS1611-023R` (`BOLT,INTERNAL WRENCHING 1/4-28 UNF`, 2.54) and 234111 `NAS1611023R` (`NUT,PLAIN,HEXAGON 5/16-24 UNF`, 2.00); 1084704 `NAS1149500R` (`SCREW,TAPPING #10-32 UNF`, 0.62) and 1151084 `NAS1149-500R` (`NUT,PLAIN,HEXAGON #10-32 UNF`, 3.61) | Needs decision: OQ1. Until then, follow C10 and merge them. |
+| P31 | Identity | Part numbers that differ only by a dash or slash are different parts in this data | 251 groups | 1397 `NAS620986P` (`SCREW,MACHINE #8-32 UNC`, 26.12) and 22812 `NAS620-986P` (`SCREW,CAP,HEXAGON HEAD #8-32 UNC`, 0.20); 7247 `NAS1611-023R` (`BOLT,INTERNAL WRENCHING 1/4-28 UNF`, 2.54) and 234111 `NAS1611023R` (`NUT,PLAIN,HEXAGON 5/16-24 UNF`, 2.00); 1084704 `NAS1149500R` (`SCREW,TAPPING #10-32 UNF`, 0.62) and 1151084 `NAS1149-500R` (`NUT,PLAIN,HEXAGON #10-32 UNF`, 3.61) | Merge them, following C10 (OQ1, decided by PRD A16). |
 | P32 | Identity | The newest copy of a part is rejected while an older copy is valid | 1,473 groups | 2907 (2025-07-08, quantity missing) and 175949 (2025-05-27, valid); 2340 (2025-11-16, quantity missing) and 1111219 (2025-08-28, valid) | Needs decision: OQ2. |
 
 **Why `STOCK` means 0 days (P25).**
@@ -504,6 +504,8 @@ But in this file every one of the 251 groups whose part numbers differ by a dash
 - **Treat `-` and `/` as significant:** `normalize_key` would keep them, which changes C10, D13, and search ("ab 123" would no longer find "AB-123-X").
 - **Recommendation:** raise it with the interviewer, since the data contradicts a confirmed fact.
   Follow C10 until then.
+- **Decision:** follow C10, without asking.
+  Recorded as judgment call A16 in the PRD.
 
 **OQ2. When the newest copy of a part is rejected, does the next-newest valid copy win, or is the part skipped? (P32)**
 This happens in 1,473 groups.
