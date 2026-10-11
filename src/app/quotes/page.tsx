@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { QuoteList } from "@/components/quote-list";
 
 export const metadata: Metadata = { title: "Quotes" };
 
@@ -11,9 +12,7 @@ export default function QuotesPage() {
           Open a saved quote to see its lines and total.
         </p>
       </div>
-      <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed p-12 text-sm text-muted-foreground">
-        Saved quotes will appear here.
-      </div>
+      <QuoteList />
     </div>
   );
 }
