@@ -1,0 +1,24 @@
+{
+  "id": 1,
+  "customerName": "Initech",
+  "createdAt": "2026-10-11T15:02:00.000Z",
+  "lines": [
+    {
+      "partId": 2,
+      "partNumber": "MS21045L176",
+      "supplier": "Allied Fastener Supply",
+      "quantity": 10,
+      "unitPrice": "12.50",
+      "lineTotal": "125.00"
+    },
+    {
+      "partId": 10,
+      "partNumber": "UN16492",
+      "supplier": "Bridgewater Avionics",
+      "quantity": 250,
+      "unitPrice": "0.40",
+      "lineTotal": "100.00"
+    }
+  ],
+  "total": "225.00"
+}

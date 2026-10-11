@@ -1,0 +1,24 @@
+{
+  "id": 2,
+  "customerName": "Globex",
+  "createdAt": "2026-10-11T16:45:30.000Z",
+  "lines": [
+    {
+      "partId": 14,
+      "partNumber": "AN6289-4",
+      "supplier": "Continental Hose Co",
+      "quantity": 4,
+      "unitPrice": "4.25",
+      "lineTotal": "17.00"
+    },
+    {
+      "partId": 7,
+      "partNumber": "RNC55H9852FM",
+      "supplier": "Bay Aero Components",
+      "quantity": 8,
+      "unitPrice": "42.50",
+      "lineTotal": "340.00"
+    }
+  ],
+  "total": "357.00"
+}

@@ -1,0 +1,18 @@
+{
+  "items": [
+    {
+      "id": 2,
+      "customerName": "Globex",
+      "createdAt": "2026-10-11T16:45:30.000Z",
+      "lineCount": 2,
+      "total": "357.00"
+    },
+    {
+      "id": 1,
+      "customerName": "Initech",
+      "createdAt": "2026-10-11T15:02:00.000Z",
+      "lineCount": 2,
+      "total": "225.00"
+    }
+  ]
+}

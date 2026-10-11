@@ -1,0 +1,85 @@
+{
+  "items": [
+    {
+      "id": 6,
+      "partNumber": "JANTX2N5921",
+      "supplier": "Bay Aero Components",
+      "quantity": null,
+      "price": null,
+      "leadTimeDays": null,
+      "lastUpdated": "2026-05-06T00:00:00.000Z",
+      "unavailableSince": null
+    },
+    {
+      "id": 9,
+      "partNumber": "M83248/2-390",
+      "supplier": "Blue Ridge Bearings",
+      "quantity": 15,
+      "price": "5356.66",
+      "leadTimeDays": 45,
+      "lastUpdated": "2026-02-10T00:00:00.000Z",
+      "unavailableSince": "2026-10-11T02:00:05.000Z"
+    },
+    {
+      "id": 2,
+      "partNumber": "MS21045L176",
+      "supplier": "Allied Fastener Supply",
+      "quantity": 120,
+      "price": "12.50",
+      "leadTimeDays": 14,
+      "lastUpdated": "2026-09-01T00:00:00.000Z",
+      "unavailableSince": null
+    },
+    {
+      "id": 13,
+      "partNumber": "MS28775-218",
+      "supplier": "Coastal Avionics Supply",
+      "quantity": 40,
+      "price": "23.55",
+      "leadTimeDays": 14,
+      "lastUpdated": "2026-10-05T00:00:00.000Z",
+      "unavailableSince": null
+    },
+    {
+      "id": 5,
+      "partNumber": "NAS1149500R",
+      "supplier": "Apex Machined Parts",
+      "quantity": 12,
+      "price": "3.61",
+      "leadTimeDays": 7,
+      "lastUpdated": "2026-08-01T00:00:00.000Z",
+      "unavailableSince": null
+    },
+    {
+      "id": 12,
+      "partNumber": "NAS1611-023R",
+      "supplier": "Bridgewater Avionics",
+      "quantity": 20,
+      "price": "2.60",
+      "leadTimeDays": 30,
+      "lastUpdated": "2026-10-03T00:00:00.000Z",
+      "unavailableSince": null
+    },
+    {
+      "id": 7,
+      "partNumber": "RNC55H9852FM",
+      "supplier": "Bay Aero Components",
+      "quantity": 5,
+      "price": "44.00",
+      "leadTimeDays": 30,
+      "lastUpdated": "2026-10-02T00:00:00.000Z",
+      "unavailableSince": null
+    },
+    {
+      "id": 10,
+      "partNumber": "UN16492",
+      "supplier": "Bridgewater Avionics",
+      "quantity": 300,
+      "price": "0.40",
+      "leadTimeDays": 21,
+      "lastUpdated": "2026-09-10T00:00:00.000Z",
+      "unavailableSince": null
+    }
+  ],
+  "nextCursor": null
+}
