@@ -21,33 +21,8 @@ If branch A generates a migration, branch B generates a later one, and B merges 
 The migrator also ignores edits to a migration that has already been applied, and takes no lock, so two concurrent runs could both apply the same migration.
 
 - **Mitigation now:** PRD section 10 lets only WS-B add migrations in Phase 1, so this needs two branches with migrations to happen.
-- **If it happens:** regenerate the older migration so it sorts last, and reset local databases with `docker compose down --volumes`.
+- **If it happens:** regenerate the older migration so it sorts last, and reset local databases with `pnpm compose down --volumes`.
 - **Who should know:** T0.3 and WS-B.
-
-### K2. Every worktree shares one local dev database (Medium)
-
-`compose.yaml` names the project `parts-catalog` and binds host port 5432, so all worktrees and branches use the same Postgres container and volume.
-Migrations, imports, and quotes from one branch show up in every other branch's dev server.
-Tests are not affected, because each test run starts its own container.
-
-This becomes a real problem in Phase 1, when agents work in parallel worktrees.
-WS-B seeds 1.2M synthetic parts for its benchmark into the same `parts` table that WS-A imports the real file into, so each would corrupt the other's data and timings.
-
-- **Fix before Phase 1:** give each worktree its own Compose project and host port.
-  - Make the host port configurable in `compose.yaml`: `"${DB_PORT:-5432}:5432"`.
-  - Set `COMPOSE_PROJECT_NAME`, `DB_PORT`, and a `DATABASE_URL` with the same port in each worktree's `.env.local`. `COMPOSE_PROJECT_NAME` overrides the `name:` in `compose.yaml`.
-  - Compose only reads `.env`, so the `dev` script has to pass `.env.local` to it as well, for example with `--env-file`.
-  - `pnpm db:migrate` and `pnpm import:csv` also load only `.env` (`--env-file-if-exists=.env`), so they ignore `.env.local` today and would migrate or import into the default database. They need to load `.env.local` too, with it taking precedence.
-  - This also fixes K3.
-- **At minimum:** WS-B runs its benchmark in its own Testcontainers database instead of the dev database.
-- **Workaround until then:** `docker compose down --volumes`, then `pnpm dev`, to start from an empty database.
-
-### K3. `pnpm dev` fails if something else is using port 5432 (Low)
-
-A local Postgres, such as one installed with Homebrew, makes `docker compose up` fail with "port is already allocated".
-
-- **Workaround:** stop the other Postgres.
-  Moving this project's database to another port only works after the K2 fix, because `pnpm db:migrate` ignores a `DATABASE_URL` set in `.env.local`.
 
 ### K4. The standalone build doesn't copy `public/` (Low)
 
@@ -87,23 +62,13 @@ It isn't caused by app code and doesn't happen without the extension.
 
 - **Options:** ignore it, or add `suppressHydrationWarning` to `<html>` in `src/app/layout.tsx`, which also hides real mismatches on that one element.
 
-### K15. Cache Components can freeze `GET` routes at build time (High)
+### K16. `pnpm dev` and `pnpm compose` don't work on Windows (Low)
 
-`next.config.ts` enables `cacheComponents`, so Next.js prerenders a `GET` route handler during the build when the handler reads nothing from the request (K14).
-K14 fixed this for `GET /api/health` only.
-Three planned routes read nothing from the request, so they would be frozen the same way:
+The `compose` script, which `dev` runs, checks for `.env.local` with POSIX shell syntax: `$([ -f .env.local ] && echo --env-file .env.local)`.
+pnpm runs scripts with `cmd.exe` on Windows, which can't run that, so both commands fail there.
+They work on macOS and Linux, and Railway never runs them.
 
-- `GET /api/imports/latest` would always return the status from build time (`idle`), so the import panel would never see an import finish (PRD R1.8).
-- `GET /api/quotes` would always return the quote list from build time (PRD R3.3).
-- `GET /api/suppliers` would always return the supplier list from build time, or make the build fail when it can't reach the database.
-
-`GET /api/parts` and `GET /api/quotes/:id` read the request, so they stay dynamic.
-
-- **Fix:** turn off `cacheComponents` in `next.config.ts`, and check whether `partialPrefetching` still applies without it.
-  The UI fetches all of its data from `/api` in the browser (PRD D15), so Cache Components adds nothing here.
-- **Alternative:** keep it, and make every `GET` handler call `await connection()` first, like the health route.
-- **When:** before Phase 1, since WS-A, WS-B, and WS-C all add `GET` handlers.
-- **Who should know:** T0.3, WS-A, WS-B, and WS-C.
+- **Fix if anyone develops on Windows:** set `shell-emulator=true` for pnpm, or replace the shell check with a small Node script that builds the `docker compose` arguments.
 
 ## Resolved
 
@@ -129,7 +94,37 @@ The health route now queries through `pg` and falls back to the error code, for 
 `LayoutProps` comes from route types that Next.js generates into `.next/`, which a fresh clone doesn't have.
 `pnpm typecheck` now runs `next typegen` before `tsc`.
 
-### K14. Cache Components could prerender the health check at build time (Resolved in T0.2)
+### K14. Cache Components could prerender the health check at build time (Resolved in T0.2, superseded by K15)
 
 With Cache Components enabled, a `GET` route handler can be prerendered during the build.
-The health route calls `connection()` first, so the build never touches the database and every request is a live check.
+T0.2 made the health route call `connection()` first.
+T0.3 turned Cache Components off (K15), so the health route no longer needs that call and has dropped it.
+
+### K15. Cache Components froze `GET` routes at build time (Resolved in T0.3)
+
+With `cacheComponents` on, Next.js prerendered any `GET` route handler that reads nothing from the request, so its response was fixed at build time.
+A probe route shaped like `GET /api/imports/latest`, returning in-memory state, was listed as static (`○`) by `pnpm build`, and the production server returned the build-time value on every request.
+
+- **Fix:** `cacheComponents` is off in `next.config.ts`.
+  `partialPrefetching` is off too, because it requires Cache Components, and Next.js refuses to start with one and not the other.
+- **Verified:** after the change, the same probe was listed as dynamic (`ƒ`) and returned a new value on each request, and `GET /api/health` stays dynamic without `connection()`.
+- **For WS-A, WS-B, and WS-C:** new `GET` handlers need nothing extra to run on every request.
+  `pnpm build` should still list every `/api` route as `ƒ`.
+
+### K2. Every worktree shared one local dev database (Resolved in T0.3)
+
+`compose.yaml` fixed the project name and host port, and `pnpm db:migrate` and `pnpm import:csv` ignored `.env.local`, so every worktree used the same Postgres container and volume.
+
+- **Fix:** a worktree can set `COMPOSE_PROJECT_NAME`, `DB_PORT`, and `DATABASE_URL` in `.env.local` (README, "Running several worktrees at once").
+  `compose.yaml` publishes `${DB_PORT:-5432}`, `pnpm compose` passes `.env.local` to Docker Compose, `pnpm dev` starts the database through it, and `pnpm db:migrate` and `pnpm import:csv` load `.env.local` after `.env`.
+  A variable set in the shell still overrides both files.
+- **Verified:** two worktrees ran `pnpm dev` at the same time, each with its own container, volume, and port.
+  Each `pnpm db:migrate` created its migrations table in its own database, a table created in one database didn't exist in the other, and nothing listened on port 5432.
+  `pnpm compose down --volumes` in each removed only that worktree's container and volume.
+- **Remember:** plain `docker compose` doesn't read `.env.local`, so in a worktree with its own database it acts on the default project instead. Use `pnpm compose`.
+
+### K3. `pnpm dev` failed if something else used port 5432 (Resolved in T0.3)
+
+A local Postgres, such as one installed with Homebrew, made `docker compose up` fail with "port is already allocated".
+
+- **Fix:** set `DB_PORT` and a matching `DATABASE_URL` in `.env.local`, as for K2.
