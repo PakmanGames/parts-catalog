@@ -828,7 +828,10 @@ Because it runs alone, it may edit shared files such as `package.json` scripts, 
 ### Measurements
 
 - **File size:** 126 MB raw, about 36 MB gzipped at the default level (section 6).
-- **Import:** TBD (WS-A).
+- **Import:** 28.1 seconds for the full export into an empty catalog with `pnpm import:csv`, and about 28 seconds as a 35.7 MB gzipped upload, which the server answered with `202` in 0.06 seconds (WS-A).
+  Re-importing the same file took 11.0 seconds and wrote nothing.
+  The summary: 1,203,487 rows read, 14,920 rejected, 57,262 duplicates collapsed, 2,227 parts whose newest row was rejected, and 1,131,305 parts inserted.
+  Measured on an Apple M4 Pro laptop, with Postgres 18.6 in Docker given 8 CPUs and 16 GB.
 - **Query benchmark:** TBD (WS-B).
 
 ### Talking points
