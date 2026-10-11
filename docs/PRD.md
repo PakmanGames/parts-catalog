@@ -11,6 +11,7 @@ Confirmed facts (`C#`), assumptions (`A#`), open questions (`Q#`), and decisions
 IDs are never reused: when something is resolved or retired, it is marked as such instead of being renumbered.
 Each significant choice goes into the [Decision log](#9-decision-log) with the alternatives and the trade-off, because the presentation is about the reasoning as much as the result.
 Technology details and the alternatives considered for each library live in [`docs/tech-stack-research.md`](tech-stack-research.md).
+Errors and likely bugs found along the way are tracked in [`docs/known-issues.md`](known-issues.md).
 
 **For an agent picking up a workstream:**
 Read sections 4 to 7 for what to build and which contracts to follow.
@@ -301,7 +302,8 @@ The import is one function that takes a CSV stream, with two thin callers:
 - **Upload:** `POST /api/imports` receives the gzip-compressed CSV, holds it in memory (about 36 MB), and responds `202`.
   It then decompresses it and runs the import in the background, for example with Next.js `after()`.
   Responding before importing keeps the request well inside Cloudflare's 100-second timeout.
-- **CLI:** `pnpm import <file>` runs the same function in the foreground and prints the summary, for development and tests.
+- **CLI:** `pnpm import:csv <file>` runs the same function in the foreground and prints the summary, for development and tests.
+  It isn't called `pnpm import`, because pnpm runs its built-in `import` command instead of a script with that name.
 
 Only one import runs at a time.
 The latest import's status lives in server memory, stored on `globalThis` so that every route handler sees the same object.
@@ -590,7 +592,7 @@ The UI only needs to be functional and clear.
 | D9  | A quote line stores the part id, quantity, and unit price. | Copy the supplier and part number onto each line too. | Copying the unit price is enough for R3.5. A part's supplier and part number keys never change for its id, so joining for them is safe. | Proposed |
 | D10 | Import by uploading the gzip-compressed CSV to `POST /api/imports`, which responds `202` and runs the import in the background inside the web process. A CLI calls the same function. | CLI only (v0.5); split the file by hand into two uploads; DNS-only Cloudflare to avoid the cap; upload straight to object storage; chunked uploads; run the import inside the request; a separate worker service with pg-boss. | The buyer has to be able to import from the app (A8). Cloudflare Access (D17) needs Cloudflare's proxy, which caps request bodies at 100 MB and expects a response within 100 seconds. Compressing in the browser takes the 126 MB file to about 36 MB with one built-in API and no new infrastructure, and the snapshot stays whole, which C11 depends on. Responding `202` before importing avoids the timeout. Splitting by hand risks importing half a snapshot and marking the other half unavailable. DNS-only loses Cloudflare Access. Object storage and chunking work at any size but add infrastructure or a protocol we don't need at 36 MB. A worker with pg-boss is the better long-term home and is in the backlog (section 12). The costs are that a restart mid-import loses the status (the catalog is safe, because the transaction rolls back) and the buyer has to upload again, and that the cap comes back if the compressed file ever nears 100 MB. | Proposed |
 | D11 | Money is `numeric` in Postgres and a decimal string in JSON. | Floats; integer cents. | Exact values without unit conversions in every layer. | Proposed |
-| D12 | Stack: Next.js 16 (App Router) with TypeScript (`strict`, `noUncheckedIndexedAccess`) and pnpm; Drizzle ORM 0.45 with `pg` and `pg-copy-streams`; Zod 4; `csv-parse`; Tailwind CSS 4, shadcn/ui, and TanStack Table; Vitest with Testcontainers; Postgres 17; Railway hosting behind Cloudflare. | See `docs/tech-stack-research.md`. | One TypeScript codebase for the UI, API, and importer, with SQL-first data access for the bulk import and Zod at every boundary where untrusted data enters. | Accepted |
+| D12 | Stack: Next.js 16 (App Router) with TypeScript (`strict`, `noUncheckedIndexedAccess`) and pnpm on Node.js 24; Drizzle ORM 0.45 with `pg` and `pg-copy-streams`; Zod 4; `csv-parse`; Tailwind CSS 4, shadcn/ui, and TanStack Table; Biome for linting and formatting; Vitest with Testcontainers; `tsx` for CLI scripts; Postgres 17, pinned to `postgres:17.11` locally and in tests; Railway hosting behind Cloudflare. | See `docs/tech-stack-research.md`. For linting, ESLint with Prettier. For data access, postgres.js with raw SQL. | One TypeScript codebase for the UI, API, and importer, with SQL-first data access for the bulk import and Zod at every boundary where untrusted data enters. Biome is one fast tool for linting, formatting, and import order, and Next.js 16 no longer ships `next lint`. | Accepted |
 | D13 | Define key normalization once, as a SQL function used by the generated key columns, import deduplication, search, and the supplier filter. | Normalize in the importer, and separately in the API; separate rules for part numbers and supplier names. | One definition means "the same part", "the same supplier", and "what search matches" can't drift apart. A normalized search term also can't contain `LIKE` wildcards. Part numbers and supplier names share one rule because C10, C12, and A13 define "the same" identically. The cost is that changing the rule needs a migration that rewrites the key columns. | Proposed |
 | D14 | Mark missing parts with an `unavailable_since` timestamp. | Delete them; an `available` boolean. | C11 asks us to record that a part is no longer available, not to remove it. Deleting would also break quotes that reference the part. A timestamp costs the same as a boolean and also records when the part went away. | Proposed |
 | D15 | Serve a JSON API under `/api` with Route Handlers, which call plain functions in `src/server/`. | Server Components that query the database directly, with Server Actions for writes. | The interviewer asked for routes with a justified design (C9). An explicit API lets the UI workstream build against mocks in parallel. Since the UI matters least (C8), every requirement can also be demonstrated with plain HTTP requests. Keeping the logic in plain functions means it can be tested without HTTP. The cost is client-side data fetching for the table and one more layer than Server Components would need. | Accepted |
@@ -649,7 +651,7 @@ T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
   - Vitest wired to Postgres 17 in Testcontainers, with one example test that runs a query.
   - `GET /api/health` from 7.4.
   - An app shell with navigation to placeholder Parts and Quotes pages.
-  - A stub `pnpm import <file>` script.
+  - A stub `pnpm import:csv <file>` script (7.2).
 - **Done when:** from a fresh clone, the README's commands bring up Postgres and the app, and `pnpm lint`, `pnpm test`, and `pnpm build` all pass.
 - **Out of scope:** domain tables, API routes other than health, and any feature UI, since those belong to T0.3 and Phase 1.
 
