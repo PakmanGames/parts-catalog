@@ -5,19 +5,38 @@
  */
 import { z } from "zod";
 import { Timestamp } from "./common";
+import { RejectReason } from "./import-rows";
 
 const Count = z.int().nonnegative();
 
-/** What one import did (PRD R1.6). */
+/**
+ * What one import did (PRD R1.6).
+ *
+ * The counts always add up, which tests can rely on:
+ * - `rowsRead` = accepted rows + every count in `rejected`.
+ * - accepted rows = `inserted` + `updated` + `unchanged` + `madeAvailable` + `duplicatesCollapsed`.
+ */
 export const ImportSummary = z.object({
+  /** Data lines after the header, including empty ones. */
   rowsRead: Count,
+  /**
+   * Accepted rows that lost to a newer row of the same part (C3, A4), including rows of a part whose
+   * newest row was rejected (A17).
+   */
   duplicatesCollapsed: Count,
-  /** Rejected rows, counted per reason, such as `{ "price is not a number": 120 }`. */
-  rejected: z.record(z.string(), Count),
+  /** Rejected rows per reason, listing only reasons that occurred, such as `{ "price is negative": 3 }`. */
+  rejected: z.partialRecord(RejectReason, Count),
+  /** Parts in the file whose newest row was rejected, so the import treated them as absent (A17). */
+  newestRejected: Count,
+  /** Parts that weren't in the catalog before. */
   inserted: Count,
+  /** Available parts whose values or display spellings changed. */
   updated: Count,
+  /** Available parts whose values didn't change, so nothing was written (D5). */
   unchanged: Count,
+  /** Available parts missing from the file, or whose newest row was rejected (C11, A17). */
   markedUnavailable: Count,
+  /** Unavailable parts that are back in the file, whether or not their values changed (A15). */
   madeAvailable: Count,
   durationMs: Count,
 });

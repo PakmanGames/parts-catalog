@@ -1,6 +1,6 @@
 # Parts Catalog - Product Requirements
 
-> **Status:** Draft v0.10 - living doc, updated as new context comes in.
+> **Status:** Draft v0.11 - living doc, updated as new context comes in.
 > **Last updated:** 2026-10-11
 
 ## How to use this doc
@@ -101,8 +101,11 @@ Deferred until after the MVP: see the [Post-MVP backlog](#12-post-mvp-backlog).
 
 - A part is identified by its supplier and part number together (C2).
 - Part numbers that differ only in spaces, punctuation, or letter case are the same part number (C10, C12).
-- Supplier names that differ only in spaces, punctuation, or letter case are the same supplier, shown under the spelling from that supplier's newest row (A13, judgment call).
+- Supplier names that differ only in spaces, punctuation, or letter case are the same supplier, shown under that supplier's most common spelling in the file (A13, judgment call).
+- Part numbers are shown trimmed and in upper case (A13).
 - When the file repeats a part, the row with the newest last-updated timestamp wins, wherever it sits in the file (C3).
+- That holds even when the newest row is rejected: the part then counts as absent from the file, so it is marked unavailable (A17, judgment call).
+- Rows dated after the file was made are accepted as written, and can win (A18, judgment call).
 - When repeated rows also share the same timestamp, the row later in the file wins (A4, judgment call).
 - The database never holds two rows for the same part.
 
@@ -115,11 +118,14 @@ Deferred until after the MVP: see the [Post-MVP backlog](#12-post-mvp-backlog).
 **R1.5 Bad rows don't break the import.**
 
 - A malformed row is normalized when its intended value is unambiguous, and rejected with a reason otherwise.
+  The rule for every problem in the export is in `docs/data-profile.md`, sections 4.2 and 8.1.
+- An unknown quantity (blank or `N/A`) or price (blank or `CALL`) is kept as unknown rather than rejected, so the buyer can still find the part (A19, judgment call).
 - One bad row never aborts the whole file.
 
 **R1.6 The import reports what it did.**
 
 - Counts of rows read, duplicates collapsed, and rows rejected (grouped by reason).
+- The count of parts whose newest row was rejected, so they were treated as absent (A17).
 - Counts of parts inserted, updated, unchanged, marked unavailable, and made available again.
 - The duration.
 - The app shows this summary when an upload finishes (R1.8), and the CLI prints it.
@@ -141,14 +147,13 @@ Deferred until after the MVP: see the [Post-MVP backlog](#12-post-mvp-backlog).
 
 **R2.1 Parts table with server-side pagination.**
 
-- Columns are at least part number, supplier, quantity, price, lead time, and availability.
-- The final column list is decided in T0.3, after profiling.
+- Columns are part number, supplier, quantity, price, lead time, last updated, and availability (D20).
 - Parts that are no longer available still appear in the table and in search results, dimmed and labeled (A14, judgment call).
 
 **R2.2 Sort by quantity, price, or lead time, ascending or descending.**
 
 - Ordering is deterministic: ties are broken by a stable key, so rows never repeat or go missing between pages.
-- Missing values have a fixed position, for example unknown lead time always sorts last.
+- Unknown values always sort last, in both directions: unknown quantity, price, and lead time (A19).
 
 **R2.3 Search by partial part number.**
 
@@ -158,7 +163,7 @@ Deferred until after the MVP: see the [Post-MVP backlog](#12-post-mvp-backlog).
 **R2.4 Filter by supplier.**
 
 - The buyer can pick one or more suppliers from the list (A10, judgment call).
-- Each supplier appears once in the list, under the spelling from its newest row (A13).
+- Each supplier appears once in the list, under its most common spelling (A13).
 
 **R2.5 Every combination stays fast.**
 
@@ -177,9 +182,11 @@ Deferred until after the MVP: see the [Post-MVP backlog](#12-post-mvp-backlog).
 - A quote has a customer name and one or more lines.
 - Each line has a part, a quantity, and a unit price.
 - Unit price defaults to the part's price from the file, and the buyer can edit it (C6).
+  A part whose price is unknown has no default, so the buyer enters one before saving (A19).
 - Validation: the customer name is required, quantity is a positive integer, unit price is non-negative, there is at least one line, each part appears at most once, and every part is currently available.
 - Quantity may be more than the stock on hand, including for parts with no stock (A6, judgment call).
   When it is, the form shows a warning with how many units are beyond stock and the part's lead time, for example "80 more than in stock, lead time 21 days".
+  When the part's stock is unknown, the form says so instead (A19).
 - Line totals and the quote total are calculated from the lines and shown.
 
 **R3.3 Save and view later.**
@@ -231,8 +238,9 @@ The full profile, with every rule, count, and example, and the queries behind th
 - Most problems are formatting with one clear meaning, and are normalized: prices with `$` or ` USD`, thousands separators, lead times in days, weeks, or `STOCK`, three timestamp formats, and six spellings of every supplier.
 - Rows are rejected for a missing or `N/A` quantity, a missing or `CALL` price, negative values, a missing timestamp, too few columns, being empty, or being a repeated header.
 - Duplicates share their newest timestamp only when the rows are identical lines, so A4 never changes a result (Q3).
-- Six questions are open for T0.3, the biggest being that part numbers differing only by a dash look like different parts, which contradicts C10.
+- T0.3 decided the six questions profiling left open (data profile section 8.1), the biggest being that part numbers differing only by a dash look like different parts, which contradicts C10.
   That one is decided by judgment call A16: follow C10 and treat them as the same part.
+  The others are decided by A13, A17, A18, A19, and D20.
 
 ### Practice ground rules
 
@@ -242,9 +250,8 @@ The full profile, with every rule, count, and example, and the queries behind th
 
 ## 7. Design and contracts
 
-**Status:** Draft.
-These contracts are frozen at the end of Phase 0 (T0.3), after profiling.
-After that, any change goes through this doc first.
+**Status:** Frozen at the end of T0.3 (2026-10-11), after profiling.
+Any change now goes through this doc first, and is raised with the workstreams building against it.
 
 ### 7.1 Schema
 
@@ -252,6 +259,9 @@ The schema has one SQL function and three tables: `parts`, `quotes`, and `quote_
 It requires Postgres 17 or later (D3), and runs on Postgres 18, the version Railway provides.
 
 ```sql
+-- Trigram indexes make substring search on part numbers fast (7.3).
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 -- The single definition of "the same" for part numbers and supplier names (C10, C12, A13, D13).
 -- Used by the key columns, by import deduplication, and by search and filtering, so they can never disagree.
 CREATE FUNCTION normalize_key(raw text) RETURNS text
@@ -262,16 +272,15 @@ CREATE FUNCTION normalize_key(raw text) RETURNS text
 -- Rows are never deleted, so an id always refers to the same part (D2, D14).
 CREATE TABLE parts (
   id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  supplier          text NOT NULL,  -- spelling from the supplier's newest row, for display (A13, D8)
+  supplier          text NOT NULL,  -- the supplier's most common spelling in the latest file with the part (A13, D8)
   supplier_key      text NOT NULL GENERATED ALWAYS AS (normalize_key(supplier)) STORED,
-  part_number       text NOT NULL,  -- as written in the winning row, for display
+  part_number       text NOT NULL,  -- trimmed and upper-cased from the winning row (A13)
   part_number_key   text NOT NULL GENERATED ALWAYS AS (normalize_key(part_number)) STORED,
-  quantity          integer NOT NULL,
-  price             numeric(12, 2) NOT NULL,  -- scale confirmed in T0.3
-  lead_time_days    integer,                  -- nullability confirmed in T0.3
+  quantity          integer,          -- whole units; NULL when unknown (A19)
+  price             numeric(12, 2),   -- US dollars, scale confirmed by the profile (P20); NULL when unknown (A19)
+  lead_time_days    integer,          -- whole calendar days; NULL when unknown (P24)
   last_updated      timestamptz NOT NULL,
-  unavailable_since timestamptz,              -- NULL while the part is in the latest file (C11, D14)
-  -- remaining columns decided in T0.3
+  unavailable_since timestamptz,      -- NULL while the part is in the latest file (C11, D14, A17)
   UNIQUE (supplier_key, part_number_key)
 );
 
@@ -296,7 +305,11 @@ CREATE TABLE quote_lines (
   Only display spellings can change, when a later file writes them differently.
 - Totals are calculated when a quote is read, not stored, so they can never disagree with the lines.
 - The staging table used by the import is a temporary table, not part of the schema (7.2).
-- In Drizzle, `CREATE EXTENSION pg_trgm` and `normalize_key` go in a hand-written migration that runs before the one creating `parts`, since drizzle-kit can't express either.
+- The export's Description and NSN columns aren't stored (D20).
+- The schema lives in `src/db/schema.ts`, and the migrations in `drizzle/`, generated in order on one branch (K1):
+  - `0000_extensions_and_normalize_key.sql` is hand-written, because drizzle-kit can express neither an extension nor a SQL function.
+  - `0001_catalog_and_quotes.sql` is generated from `src/db/schema.ts`, and also creates the initial indexes from 7.3.
+- The key columns are `STORED` explicitly: Postgres 18 makes generated columns virtual by default, and a virtual column can't be indexed.
 
 ### 7.2 Import
 
@@ -315,25 +328,35 @@ If the server restarts mid-import, the transaction rolls back, the catalog is un
 
 **Algorithm.**
 
-1. Stream-parse the CSV with `csv-parse` and normalize each row's fields in application code (D4).
-   The normalizer is a pure function that turns a raw row into either a clean row or a rejection reason.
-   It keeps the trimmed part number and supplier name as written, and rejects a row if either has no letters or digits.
+1. Stream-parse the CSV with `csv-parse` and normalize each line in application code (D4), following `docs/data-profile.md` section 4.2, as amended by the T0.3 decisions in its section 8.1.
+   The normalizer is a pure function that turns each line into a `NormalizedRow` from `src/contracts/import-rows.ts`: an accepted `CleanRow`, or a `RejectedRow` with one of `REJECT_REASONS`.
+   It trims part numbers and upper-cases them, trims supplier names and collapses their inner whitespace (A13), and keeps an unknown quantity or price as `NULL` (A19).
+   A row rejected only for a bad value still carries its part and timestamp, so that step 2.4 can tell when a part's newest row is unusable (A17).
 2. In a single transaction on one dedicated connection, since `COPY` and the transaction must share it (D3):
    1. Take a transaction-level advisory lock so two imports can't interleave.
    2. Create a temporary staging table that is dropped on commit.
-   3. `COPY` the clean rows into staging, including each row's line number in the file.
-   4. Collapse duplicates with `DISTINCT ON (normalize_key(supplier), normalize_key(part_number))`, keeping the newest `last_updated` and breaking ties by the later line number (A4).
-   5. Replace each row's supplier spelling with the spelling from that supplier's newest row, using `first_value(supplier) OVER (PARTITION BY normalize_key(supplier) ORDER BY last_updated DESC, line_number DESC)` (A13).
+   3. `COPY` every accepted row into staging, plus the part and timestamp of every rejected row that has them, each with its line number in the file and whether it was rejected.
+   4. Collapse duplicates with `DISTINCT ON (normalize_key(supplier), normalize_key(part_number))`, keeping the newest `last_updated` and breaking ties by the later line number (C3, A4).
+      If a part's winning row is a rejected one, drop the part, so that step 2.6 treats it as absent from the file (A17).
+   5. Give each supplier its most common spelling among the accepted rows, breaking ties by the spelling whose newest row is newest, by `last_updated` and then line number (A13).
    6. `MERGE` the result into `parts` on `(supplier_key, part_number_key)`:
       - **Not in `parts`:** insert it.
-      - **In both, and values differ or the part was unavailable:** update the values and clear `unavailable_since`.
-      - **In `parts` but not in the file, and still available:** set `unavailable_since = now()`.
+      - **In both, and any value or display spelling differs, or the part was unavailable:** update the values and clear `unavailable_since`.
+        Compare with `IS DISTINCT FROM`, since quantity, price, and lead time can be `NULL`.
+      - **In `parts` but not in the result, and still available:** set `unavailable_since = now()`.
       - **Anything else:** write nothing, which is what makes re-running the same file a no-op (D5).
    7. Commit, then run `ANALYZE parts`.
-3. Record the R1.6 summary, using `MERGE ... RETURNING merge_action()` for the counts.
+3. Record the R1.6 summary.
+   Its counts are defined in `ImportSummary` in `src/contracts/imports.ts`, including the two sums they always satisfy.
+   `MERGE ... RETURNING merge_action()` gives the action, and Postgres 18's `RETURNING old.unavailable_since` tells an update from a part made available again.
 
 A part missing from the file keeps the supplier spelling it already had.
 So an unavailable part can show an older spelling of its supplier, which we accept to keep the import to one `MERGE`.
+
+**Fixtures.**
+`tests/fixtures/imports/` holds two small exports, `night-1.csv` and `night-2.csv`, built from the traps in the data profile.
+Its `expected.json` gives the summary and the whole `parts` table after each of five imports in a row, and its README explains every line.
+WS-A's tests import them in that order and compare.
 
 ### 7.3 Parts query
 
@@ -353,8 +376,10 @@ LIMIT :limit + 1;                                            -- the extra row te
 - Sorting by part number sorts by `part_number_key`.
 - Unavailable parts are included in results, so availability adds no filter and needs no index (A14).
 - Pagination is keyset with `id` as the tiebreaker (D6), and there is no exact total count (D7).
-- If lead time can be missing, the keyset condition has to treat `NULL` explicitly so that missing values always sort last.
-- The supplier list is one row per `supplier_key`, showing the spelling with the newest `last_updated`.
+- Quantity, price, and lead time can all be `NULL` (A19), so the keyset condition has to treat `NULL` explicitly so that unknown values sort last in both directions (R2.2).
+  A plain `(column, id)` index puts `NULL` last ascending but first in a backward scan, so WS-B checks how descending sorts use it.
+- The supplier list is one row per `supplier_key`.
+  It shows the spelling on that supplier's available parts, which step 2.5 of 7.2 makes the same for all of them, or the spelling with the newest `last_updated` when none are available.
   It scans `parts`, so WS-B has to check it meets NFR1 too.
 
 The index plan below is a starting point, and it is expected to change.
@@ -383,7 +408,10 @@ The benchmark also times `OFFSET` paging at the same deep page, so the presentat
 The API uses JSON under `/api`, served by Next.js Route Handlers (D15).
 Each handler validates its input with the Zod schemas from `src/contracts/` and calls a plain function in `src/server/`, so the logic can be tested without HTTP.
 Money is sent as decimal strings such as `"12.50"` (NFR4).
-Errors return `400`, `404`, `409`, or `413` with `{ "error": "message" }`.
+Errors return `400`, `404`, `409`, or `413` with `{ "error": "message" }`, and `GET /api/health` returns `503` the same way.
+
+Every request and response below has a Zod schema in `src/contracts/`, one file per resource, with a TypeScript type of the same name.
+`tests/fixtures/api/` has an example of each response for WS-D's mocks, and a test keeps every example in line with its schema.
 
 **`POST /api/imports`**
 
@@ -408,11 +436,12 @@ The status of the most recent import since the server started.
   "finishedAt": "2026-10-10T22:01:10Z",
   "summary": {
     "rowsRead": 1200000,
-    "duplicatesCollapsed": 15000,
-    "rejected": { "price is not a number": 120 },
+    "duplicatesCollapsed": 54000,
+    "rejected": { "quantity is negative": 1197, "price is negative": 1150 },
+    "newestRejected": 113,
     "inserted": 1000,
     "updated": 25000,
-    "unchanged": 1158000,
+    "unchanged": 1117641,
     "markedUnavailable": 300,
     "madeAvailable": 12,
     "durationMs": 70000
@@ -450,6 +479,7 @@ The status of the most recent import since the server started.
 }
 ```
 
+`quantity`, `price`, and `leadTimeDays` are `null` when the export didn't give them (A19).
 To go back a page, the client keeps a stack of cursors it has already used.
 
 **`GET /api/suppliers`**
@@ -521,8 +551,10 @@ The UI only needs to be functional and clear.
   The button is disabled while an import is running.
 - **Parts page:** a search box, a supplier multi-select, sortable part number, quantity, price, and lead time headers, previous and next buttons, a checkbox on each row, and a "Selected (N)" panel with a "Create quote" button.
 - **Unavailable parts:** shown dimmed, with a "No longer available" label so availability isn't shown by color alone, and with their checkbox disabled.
+- **Unknown values:** an unknown quantity, price, or lead time is shown as "Unknown", never as 0 or a blank cell (A19).
 - **Quote form:** a customer name field and one line per selected part, with editable quantity and unit price (prefilled from the part's price), live totals, and a Save button.
-  A line whose quantity is above the part's stock shows a warning with the shortfall and the lead time (R3.2).
+  A part with an unknown price starts with an empty unit price, which the buyer has to fill in.
+  A line whose quantity is above the part's stock shows a warning with the shortfall and the lead time, or says the stock is unknown (R3.2).
 - **Quotes:** a list page and a detail page.
 - The selection stores each selected part's data on the client, keyed by part id, so it survives paging and the quote form can prefill unit prices without fetching them again.
 
@@ -566,10 +598,13 @@ The UI only needs to be functional and clear.
 | A10 | The supplier filter accepts one or more suppliers. | Better for the buyer, but several suppliers make the query and its indexes harder to keep fast (7.3). | Judgment call | Q6 |
 | A11 | All prices use one currency. | Affects storage and display. | Open | Q8 |
 | A12 | The quote list doesn't need pagination, since there is one buyer and few quotes. | Keeps the API small. | Open | - |
-| A13 | Supplier names that differ only in spaces, punctuation, or letter case are the same supplier, displayed with the spelling from that supplier's newest row. | Supplier is part of a part's identity, so treating variants as different suppliers would split one part into several rows. | Judgment call | Q12 |
+| A13 | Supplier names that differ only in spaces, punctuation, or letter case are the same supplier, displayed with that supplier's most common spelling in the file, with ties broken by the newest row. Part numbers are displayed trimmed and in upper case. | Supplier is part of a part's identity, so treating variants as different suppliers would split one part into several rows. Until T0.3 the display used the newest row's spelling, but profiling showed that is an odd variant for 12 of the 40 suppliers, such as `apex machined parts`, and it would flip from night to night. The most common spelling is always the clean name in the generated file. | Judgment call | Q12 |
 | A14 | Unavailable parts still appear in the table and search results, dimmed and labeled, but can't be quoted. | The buyer can still tell a customer a part is no longer carried, without quoting it by mistake. | Judgment call | Q13 |
 | A15 | A part that reappears in a later file becomes available again. | Affects the merge. | Open | - |
 | A16 | Part numbers that differ only by a dash or slash, such as `NAS1149-500R` and `NAS1149500R`, are the same part, as C10 says, even though in this file they look like different parts. | Profiling found 251 such groups whose copies have different descriptions and prices a median 6.2 times apart (data profile OQ1). We take the rule as it was given to us, so one identity rule still covers the import, search, and the supplier filter (D13). The cost is that each of those groups becomes one part, showing its newest row's description and price. Treating `-` and `/` as significant was rejected, because it contradicts a confirmed fact. | Judgment call | Q15 |
+| A17 | A part's newest row in the file, by last-updated timestamp and then by line, decides the part even when that row is rejected. The part then counts as absent from the file: it is marked unavailable, or not inserted if it is new. | Keeps C3 strict: the newest row is the export's latest word on the part, so showing an older copy would show data the export has replaced. Using the newest valid copy, and leaving the part unchanged, were both considered (data profile OQ2). Once unknown values are kept (A19), only a negative quantity or price triggers this, in about 113 parts of the generated file. | Judgment call | Q16 |
+| A18 | Rows dated after the file was made are accepted as written, and can win under C3 like any other row. | The file has no export date to compare with, and rejecting by the import's own clock would let re-running the same file give a different result (R1.4). In the generated file, 3,996 rows are dated up to 2027-04-16 and win 3,773 parts. The cost is that a future-dated row keeps beating real updates in later files until the calendar catches up. | Judgment call | Q17 |
+| A19 | An unknown quantity (blank or `N/A`) or price (blank or `CALL`) is stored as `NULL` rather than rejecting the row. | Rejecting would leave out 44,265 parts (4%) the buyer may need to find. Unknown values sort last and display as "Unknown", and a part with no price can still be quoted once the buyer enters one. The cost is two more nullable sort columns (7.3). | Judgment call | Q18 |
 
 ### Open questions
 
@@ -593,6 +628,9 @@ The UI only needs to be functional and clear.
   Deferred until after the MVP.
 - **Q15.** Should part numbers that differ only by a dash or slash be separate parts, since in this file they look like different parts (data profile OQ1)?
   Not asked. Decided by judgment call A16.
+- **Q16.** When a part's newest row is rejected, does an older valid row win? Not asked. Decided by judgment call A17.
+- **Q17.** Should rows dated after the file was made be accepted? Not asked. Decided by judgment call A18.
+- **Q18.** Should a part with an unknown quantity or price be kept? Not asked. Decided by judgment call A19.
 
 ## 9. Decision log
 
@@ -605,7 +643,7 @@ The UI only needs to be functional and clear.
 | D5  | Only write rows whose values or availability changed. | Overwrite every row on every import. | Re-running the same file writes nothing, the counts are accurate, and fewer dead rows are left for vacuum. | Accepted |
 | D6  | Keyset (cursor) pagination. | `OFFSET`/`LIMIT`. | Stays fast at any depth, while `OFFSET` gets slower the deeper you go. The cost is no "jump to page N". | Accepted |
 | D7  | Show no exact total count, only whether a next page exists. | Exact `COUNT(*)`; a planner estimate; a capped count. | An exact count over a large filtered result is slow. The buyer is looking for a few matching parts, not a total. Can be revisited if the interviewer wants totals. | Accepted |
-| D8  | Store the supplier as text on `parts`, with a generated `supplier_key`, and write the spelling from the supplier's newest row onto all of its parts. | A separate `suppliers` table (proposed in v0.4); keep each part's own spelling. | Keeps the schema to one catalog table and the import to one `MERGE`. Writing the newest spelling onto every row means the table and the supplier filter always agree. The costs are repeating the supplier name on every row, rewriting a supplier's rows when its newest spelling changes, unavailable parts keeping an older spelling, and a supplier list query that scans `parts`. | Accepted |
+| D8  | Store the supplier as text on `parts`, with a generated `supplier_key`, and write the supplier's most common spelling in the file onto all of its parts in the file (A13). | A separate `suppliers` table (proposed in v0.4); keep each part's own spelling; the newest row's spelling (until T0.3). | Keeps the schema to one catalog table and the import to one `MERGE`. Writing one spelling onto every row in the file means the table and the supplier filter always agree. The costs are repeating the supplier name on every row, rewriting a supplier's rows when its most common spelling changes, unavailable parts keeping an older spelling, and a supplier list query that scans `parts`. | Accepted |
 | D9  | A quote line stores the part id, quantity, and unit price. | Copy the supplier and part number onto each line too. | Copying the unit price is enough for R3.5. A part's supplier and part number keys never change for its id, so joining for them is safe. | Accepted |
 | D10 | Import by uploading the gzip-compressed CSV to `POST /api/imports`, which responds `202` and runs the import in the background inside the web process. A CLI calls the same function. | CLI only (v0.5); split the file by hand into two uploads; DNS-only Cloudflare to avoid the cap; upload straight to object storage; chunked uploads; run the import inside the request; a separate worker service with pg-boss. | The buyer has to be able to import from the app (A8). Cloudflare Access (D17) needs Cloudflare's proxy, which caps request bodies at 100 MB and expects a response within 100 seconds. Compressing in the browser takes the 126 MB file to about 36 MB with one built-in API and no new infrastructure, and the snapshot stays whole, which C11 depends on. Responding `202` before importing avoids the timeout. Splitting by hand risks importing half a snapshot and marking the other half unavailable. DNS-only loses Cloudflare Access. Object storage and chunking work at any size but add infrastructure or a protocol we don't need at 36 MB. A worker with pg-boss is the better long-term home and is in the backlog (section 12). The costs are that a restart mid-import loses the status (the catalog is safe, because the transaction rolls back) and the buyer has to upload again, and that the cap comes back if the compressed file ever nears 100 MB. | Accepted |
 | D11 | Money is `numeric` in Postgres and a decimal string in JSON. | Floats; integer cents. | Exact values without unit conversions in every layer. | Accepted |
@@ -617,6 +655,7 @@ The UI only needs to be functional and clear.
 | D17 | Put the deployed site behind Cloudflare Access. | Build a login into the app; a public URL; DNS-only Cloudflare. | C5 means no auth in the app, but a public URL would let anyone import files or create quotes. Access adds a login at the edge with no app code. It needs Cloudflare's proxy, which brings the upload limits that D10 works around. | Accepted |
 | D18 | Define the Railway project in `.railway/railway.ts` and apply it with `railway config apply`. | `railway.json` config as code; settings made by hand in the dashboard or CLI and listed in `docs/deploy.md`. | Railway deprecated `railway.json`, which stops being read on 2026-12-01. The TypeScript file declares the whole project, including the database, its volume, the variables, and the custom domain, so a review covers all of it and the runbook doesn't have to repeat settings. The costs are a dev dependency on the `railway` SDK, a manual apply after changing the file because deploys don't read it (K17), and that an apply deletes anything the file leaves out. | Accepted |
 | D19 | Set Cloudflare's SSL/TLS mode to Full, not Full (strict), for the app's subdomain only, with a Configuration Rule. | Full (strict) with the CNAME set to DNS only until Railway issues a certificate; Full (strict) with Access and HTTPS-redirect exceptions for the ACME challenge path; a Cloudflare Tunnel. | Railway gets its certificate from Let's Encrypt over HTTP, and Cloudflare redirects that challenge to HTTPS and then to the Access login, so Railway serves its generic `*.up.railway.app` certificate and Full (strict) fails with error 526. Railway documents Full for proxied domains. A DNS-only switch would only work until the first renewal, about 60 days later, and the exceptions add three rules that break silently if changed. The cost is that Cloudflare encrypts the connection to Railway but doesn't check Railway's certificate. Other sites on the domain keep Full (strict). | Accepted |
+| D20 | Store only the export columns the requirements use: part number, supplier, quantity, price, lead time, and last updated. Drop Description and NSN. | Keep Description for display, so the buyer can confirm a part while quoting (the profile's recommendation); keep both, with NSN normalized to its dashed form. | NFR5: no requirement reads either column. NSN is blank in 32% of rows and comes in three formats, one of them truncated. Description would help a buyer confirm a part, but it isn't required, and adding it later is one nullable column, a migration, and one more field in the normalizer and the API. | Accepted |
 
 ## 10. Work breakdown
 
@@ -693,6 +732,7 @@ Because it runs alone, it may edit shared files such as `package.json` scripts, 
   - The Zod schema for `GET /api/parts` and the clean row type between the normalizer and the loader, with TypeScript types inferred from all the schemas.
   - Two small CSV fixtures packed with the data traps, a "night 1" and a "night 2", with the database state each should produce, for WS-A.
     Night 2 drops, changes, adds, and re-adds parts, and both nights spell some part numbers and supplier names differently.
+    Re-adding needs a part that an earlier import dropped, so `expected.json` imports night 1 again after night 2 (`tests/fixtures/imports/README.md`).
   - JSON response fixtures, for WS-D's mocks.
 - **Done when:**
   - The migrations apply, the types compile, the fixtures are committed, and section 7 is marked frozen.
@@ -712,9 +752,10 @@ Because it runs alone, it may edit shared files such as `package.json` scripts, 
   The two meet at the clean row type from T0.3.
 - **Done when:**
   - Unit tests cover every rule in `docs/data-profile.md`.
-  - Importing the night 1 fixture, then the night 2 fixture, produces exactly the expected database state after each.
+  - Importing the fixtures in the order `tests/fixtures/imports/expected.json` lists produces exactly its summary and `parts` table after each step.
+  - A part whose newest row is rejected is treated as absent from the file (A17), and an unknown quantity or price is stored as `NULL` (A19).
   - Part number variants that differ only in spaces, punctuation, or case collapse into one part, and the newest timestamp wins.
-  - Supplier name variants collapse into one supplier, and all of its parts in the file show the spelling from its newest row.
+  - Supplier name variants collapse into one supplier, and all of its parts in the file show its most common spelling, with ties broken by the newest row (A13).
   - When duplicates share a timestamp, the row later in the file wins (A4).
   - Parts missing from night 2 are marked unavailable, and parts that come back are available again.
   - A second import of the same file reports nothing inserted, updated, or newly unavailable, and a checksum over `parts` doesn't change.
@@ -728,7 +769,7 @@ Because it runs alone, it may edit shared files such as `package.json` scripts, 
 
 - **Brief:** [`docs/briefs/WS-B-parts-query.md`](briefs/WS-B-parts-query.md), with the shared rules in [`docs/briefs/phase-1-rules.md`](briefs/phase-1-rules.md).
 - **Owns:** `src/server/parts/`, `src/app/api/parts/`, `src/app/api/suppliers/`, `scripts/bench/`, and index changes in `src/db/` and `drizzle/`.
-- **Reads:** sections 4 (R2), 7.1, 7.3, and 7.4, plus the distributions in `docs/data-profile.md`.
+- **Reads:** sections 4 (R2), 7.1, 7.3, and 7.4, the distributions in `docs/data-profile.md`, and K19 in `docs/known-issues.md`.
 - **Doesn't wait on WS-A:** it seeds 1.2M synthetic parts with `generate_series`, shaped like the real data, then re-runs the benchmark on real data in Phase 2.
 - **Delivers:** `GET /api/parts`, `GET /api/suppliers`, any index changes, and a benchmark script that runs the 7.3 matrix and the supplier list with `EXPLAIN ANALYZE`.
 - **Done when:**
@@ -799,9 +840,12 @@ Because it runs alone, it may edit shared files such as `package.json` scripts, 
   - A8: the import runs from the app.
   - A9: search matches anywhere in the part number, with no typo tolerance.
   - A10: the supplier filter accepts several suppliers.
-  - A13: supplier name variants are the same supplier, shown under the newest spelling.
+  - A13: supplier name variants are the same supplier, shown under its most common spelling, and part numbers are shown in upper case.
   - A14: unavailable parts stay visible but can't be quoted.
   - A16: part numbers that differ only by a dash or slash are the same part, even though the data suggests otherwise.
+  - A17: a part's newest row decides it even when that row is rejected, so the part is treated as absent from the file.
+  - A18: rows dated after the file was made are accepted as written.
+  - A19: an unknown quantity or price is kept as unknown rather than dropping the part.
 - **When the data contradicted a confirmed fact (A16):** profiling showed 251 groups where a dash seems to separate two different parts.
   We kept the interviewer's rule (C10) and recorded the conflict as a judgment call, instead of quietly overriding it or ignoring it.
 - **Keyset over page numbers (D6, D7):** show the benchmark's `OFFSET` versus keyset timing at a deep page.

@@ -3,11 +3,12 @@ import { ImportStatusResponse } from "./imports";
 
 const summary = {
   rowsRead: 1200000,
-  duplicatesCollapsed: 15000,
-  rejected: { "price is not a number": 120 },
+  duplicatesCollapsed: 54000,
+  rejected: { "quantity is negative": 1197, "price is negative": 1150 },
+  newestRejected: 113,
   inserted: 1000,
   updated: 25000,
-  unchanged: 1158000,
+  unchanged: 1117641,
   markedUnavailable: 300,
   madeAvailable: 12,
   durationMs: 70000,
@@ -47,6 +48,16 @@ describe("ImportStatusResponse", () => {
     [
       "a running import that already has a summary",
       { status: "running", startedAt, finishedAt: null, summary, error: null },
+    ],
+    [
+      "a reject reason that isn't in the list",
+      {
+        status: "succeeded",
+        startedAt,
+        finishedAt,
+        summary: { ...summary, rejected: { "price is CALL": 1 } },
+        error: null,
+      },
     ],
     [
       "an unknown status",

@@ -7,8 +7,8 @@
 import { z } from "zod";
 
 /**
- * Money is `numeric(MONEY_PRECISION, MONEY_SCALE)` in Postgres (PRD 7.1).
- * The scale waits on the data profile (T0.1); if it changes, change it here and in the schema.
+ * Money is `numeric(MONEY_PRECISION, MONEY_SCALE)` in Postgres (PRD 7.1, `src/db/schema.ts`).
+ * The data profile confirmed scale 2: every 4-decimal price in the export ends in `00` (P20).
  */
 export const MONEY_PRECISION = 12;
 export const MONEY_SCALE = 2;

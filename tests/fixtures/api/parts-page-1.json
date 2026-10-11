@@ -1,0 +1,85 @@
+{
+  "items": [
+    {
+      "id": 3,
+      "partNumber": "6036-2327-65",
+      "supplier": "Anchor Fluid Power",
+      "quantity": 46,
+      "price": "64.73",
+      "leadTimeDays": 0,
+      "lastUpdated": "2026-03-18T00:00:00.000Z",
+      "unavailableSince": "2026-10-11T02:00:05.000Z"
+    },
+    {
+      "id": 4,
+      "partNumber": "81H37815-5",
+      "supplier": "Apex Machined Parts",
+      "quantity": 0,
+      "price": "1604.20",
+      "leadTimeDays": 84,
+      "lastUpdated": "2026-06-15T00:00:00.000Z",
+      "unavailableSince": null
+    },
+    {
+      "id": 14,
+      "partNumber": "AN6289-4",
+      "supplier": "Continental Hose Co",
+      "quantity": 10,
+      "price": "4.25",
+      "leadTimeDays": 7,
+      "lastUpdated": "2026-10-05T00:00:00.000Z",
+      "unavailableSince": null
+    },
+    {
+      "id": 15,
+      "partNumber": "AN6289-6",
+      "supplier": "Continental Hose Co",
+      "quantity": 0,
+      "price": "5.10",
+      "leadTimeDays": 0,
+      "lastUpdated": "2026-10-05T00:00:00.000Z",
+      "unavailableSince": null
+    },
+    {
+      "id": 16,
+      "partNumber": "AN6289-8",
+      "supplier": "Continental Hose Co",
+      "quantity": 3,
+      "price": "6.00",
+      "leadTimeDays": 7,
+      "lastUpdated": "2026-10-05T00:00:00.000Z",
+      "unavailableSince": null
+    },
+    {
+      "id": 11,
+      "partNumber": "AN6C35",
+      "supplier": "Cascade Aerospace Parts",
+      "quantity": 25,
+      "price": "19.50",
+      "leadTimeDays": 120,
+      "lastUpdated": "2026-10-04T00:00:00.000Z",
+      "unavailableSince": null
+    },
+    {
+      "id": 1,
+      "partNumber": "AN960C10L",
+      "supplier": "Allied Fastener Supply",
+      "quantity": 900,
+      "price": "9.15",
+      "leadTimeDays": 14,
+      "lastUpdated": "2026-10-01T00:00:00.000Z",
+      "unavailableSince": null
+    },
+    {
+      "id": 8,
+      "partNumber": "D38999/24JG62SC",
+      "supplier": "Blue Ridge Bearings",
+      "quantity": 8,
+      "price": "215.00",
+      "leadTimeDays": 90,
+      "lastUpdated": "2025-12-01T00:00:00.000Z",
+      "unavailableSince": "2026-10-11T02:00:05.000Z"
+    }
+  ],
+  "nextCursor": "mock-cursor-page-2"
+}

@@ -20,7 +20,8 @@ Severity:
 If branch A generates a migration, branch B generates a later one, and B merges and migrates first, A's migration is skipped without an error on every database that already ran B's.
 The migrator also ignores edits to a migration that has already been applied, and takes no lock, so two concurrent runs could both apply the same migration.
 
-- **Mitigation now:** PRD section 10 lets only WS-B add migrations in Phase 1, so this needs two branches with migrations to happen.
+- **Mitigation now:** T0.3 generated both initial migrations in order on one branch: `0000_extensions_and_normalize_key.sql`, then `0001_catalog_and_quotes.sql`.
+  PRD section 10 lets only WS-B add migrations in Phase 1, so this needs two branches with migrations to happen.
 - **If it happens:** regenerate the older migration so it sorts last, and reset local databases with `pnpm compose down --volumes`.
 - **Who should know:** T0.3 and WS-B.
 
@@ -83,6 +84,17 @@ Until then, the file and Railway can disagree, and the next apply may also inclu
 Railway's builder, Railpack 0.40.1, logs "could not detect pnpm lockfile version" during every build.
 Railpack reads the pnpm version from `packageManager` in `package.json` before it looks at the lockfile, so it still installs pnpm 12.10.1, and the build succeeds.
 The warning is harmless as long as `packageManager` stays set.
+
+### K19. Descending sorts may not find unknown values where R2.2 wants them (Medium)
+
+T0.3 made quantity and price nullable (A19), so three of the four sort columns can now be `NULL`, and R2.2 says unknown values sort last in both directions.
+The initial indexes from PRD 7.3 are plain `(column, id)` B-trees, which keep `NULL` last when read forward but return it first when read backward for a descending sort.
+So a query that puts unknown values last on a descending sort can't simply walk those indexes backward.
+Checked with 200,000 synthetic parts: `ORDER BY quantity DESC, id DESC` is a backward index-only scan, but `ORDER BY quantity DESC NULLS LAST, id DESC` reads the whole table and sorts it, which would miss NFR1 at 1.2M rows.
+
+- **Fix:** WS-B checks the plans for descending sorts on quantity, price, and lead time, and changes the indexes or the query to suit.
+  For example, it could add `DESC NULLS LAST` indexes, or fetch the known values and the unknown ones as two keyset ranges.
+- **Who should know:** WS-B.
 
 ## Resolved
 

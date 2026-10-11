@@ -1,0 +1,21 @@
+{
+  "status": "succeeded",
+  "startedAt": "2026-10-11T02:00:03.000Z",
+  "finishedAt": "2026-10-11T02:00:05.000Z",
+  "summary": {
+    "rowsRead": 17,
+    "duplicatesCollapsed": 2,
+    "rejected": {
+      "row is empty": 1,
+      "price is negative": 1
+    },
+    "newestRejected": 1,
+    "inserted": 5,
+    "updated": 4,
+    "unchanged": 4,
+    "markedUnavailable": 3,
+    "madeAvailable": 0,
+    "durationMs": 1840
+  },
+  "error": null
+}
