@@ -8,16 +8,17 @@
   },
   "packageManager": "pnpm@12.10.1",
   "scripts": {
-    "dev": "docker compose up --detach --wait && pnpm db:migrate && next dev",
+    "dev": "pnpm compose up --detach --wait && pnpm db:migrate && next dev",
     "build": "next build && cp -r .next/static .next/standalone/.next/",
     "start": "node .next/standalone/server.js",
     "lint": "biome check",
     "format": "biome check --write",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
+    "compose": "docker compose --env-file .env $([ -f .env.local ] && echo --env-file .env.local)",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node --env-file-if-exists=.env src/db/migrate.ts",
-    "import:csv": "tsx --env-file-if-exists=.env scripts/import.ts"
+    "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local src/db/migrate.ts",
+    "import:csv": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/import.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
