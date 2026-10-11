@@ -19,3 +19,6 @@ next-env.d.ts
 
 # `.env` holds the local development defaults and is committed; machine-specific overrides go here.
 .env*.local
+
+# Personal interview prep, kept local and out of the repo.
+/docs/presentation-notes.md
