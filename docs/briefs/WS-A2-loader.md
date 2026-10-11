@@ -35,9 +35,10 @@ Then stop, and tell the user you're waiting for T0.3.
 
 - **`docs/PRD.md`:** all of R1, NFR2, NFR3, 7.1, 7.2, and the imports part of 7.4.
 - **`docs/data-profile.md`:** section 5, "Identity and duplicates".
-- **Contracts:** `src/contracts/imports.ts` and the clean row type from T0.3.
+- **Contracts:** `src/contracts/imports.ts` and `src/contracts/import-rows.ts`.
+- **Fixtures:** `tests/fixtures/imports/README.md`, which describes each import sequence and its expected result.
 - **Your input:** the "What to build" section of [`WS-A1-row-reader.md`](WS-A1-row-reader.md).
-  `readRows` yields one result per data line.
+  `readRows` yields one `NormalizedRow` per data line.
 
 ## What to build
 
@@ -45,7 +46,7 @@ Then stop, and tell the user you're waiting for T0.3.
    It takes the CSV's bytes as an `AsyncIterable<Uint8Array>`, passes them through `readRows`, loads the clean rows, and returns the R1.6 summary.
 2. **The loader:** steps 2 and 3 of the algorithm in PRD 7.2, with these changes:
    - **Supplier spelling (decision 4):** step 5 uses each supplier's most common spelling among this file's accepted rows, not the spelling from its newest row.
-     Break ties with a fixed rule, such as alphabetical order, and test it.
+     Ties go to the spelling whose newest row is newest, by timestamp and then by line.
      Don't rely on Postgres's `mode()` for ties: its documentation says it picks among equally frequent values arbitrarily.
    - **NULL-safe change detection:** quantity, price, and lead time can be NULL (decision 2).
      Compare every stored value, including the display spellings, with `IS DISTINCT FROM`.
@@ -58,9 +59,9 @@ Then stop, and tell the user you're waiting for T0.3.
    - The part counts come from `MERGE ... RETURNING merge_action()`.
      Telling "made available again" apart from other updates needs the row's old `unavailable_since`.
      Postgres 18's `RETURNING` can read old values; confirm the syntax in its documentation.
-   - **Values set to unknown and future-dated rows:** if T0.3's frozen `ImportSummary` has fields for them, fill them.
-     If it doesn't, tell the user before building around the gap.
-     NFR3 says nothing is silently corrupted, so every value set to NULL should be visible somewhere.
+   - **A newest row that was rejected (A17):** rejected rows that carry an `identity` take part in finding each part's newest row.
+     If that row is rejected, the part counts as absent from the file, and `newestRejected` counts it.
+   - The counts must add up exactly as the `ImportSummary` comment in the contract states.
 4. **Import status:** idle, running, succeeded, or failed, stored on `globalThis` so every route handler sees the same object (7.2).
 5. **`POST /api/imports`:**
    - Return `413` for a body over 100 MB.
@@ -93,10 +94,11 @@ Never write your own CSV cleaning: one set of rules lives in `src/server/importe
 
 The PRD's WS-A list, minus the normalizer's unit tests, which are WS-A1's, plus the decisions:
 
-- Importing night 1 and then night 2 produces exactly the expected database state after each.
+- Every import sequence in `tests/fixtures/imports/` produces exactly the expected summary and `parts` table after each import.
 - Part number variants that differ only in spaces, punctuation, or case collapse into one part, and the newest timestamp wins.
 - When duplicates share a timestamp, the row later in the file wins (A4).
-- A newest row with unknown values beats an older row with good values (decision 2).
+- A newest row with unknown values beats an older row with good values (A19).
+- A newest row that is rejected makes the part absent: marked unavailable, or not inserted if it is new, and an older valid copy never stands in for it (A17).
 - A future-dated row wins when it's the newest (decision 3).
 - Supplier variants collapse into one supplier shown under its most common spelling, and ties go the same way every time (decision 4).
 - A change from a value to NULL, and from NULL to a value, counts as an update.
