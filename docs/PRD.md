@@ -222,15 +222,16 @@ Deferred until after the MVP: see the [Post-MVP backlog](#12-post-mvp-backlog).
 - `python3 generate_mock_data.py` writes the file to `mock_data/mock_a/parts_export.csv`.
   Use `--rows 100000` for a smaller file while iterating.
 
-### To learn by profiling (T0.1)
+### What profiling found (T0.1)
 
-- The exact header, columns, and the target type for each column.
-- Formats for quantity, price, lead time, and the last-updated timestamp, including time zones.
-- Blanks, nulls, sentinel values, whitespace, casing, and encoding problems.
-- Supplier name spellings, as a sanity check that A13's rule doesn't merge two genuinely different suppliers.
-- Which characters appear in part numbers, and whether any part number has no letters or digits at all.
-- How often duplicates occur after normalization, and whether duplicates ever share a timestamp (Q3).
-- Distributions: number of suppliers, rows per supplier, and part number length and shape, which WS-B needs to build realistic benchmark data.
+The full profile, with every rule, count, and example, and the queries behind them, is in [`docs/data-profile.md`](data-profile.md).
+
+- The header is `Part Number,NSN,Description,Supplier,Qty On Hand,Unit Price,Lead Time,Last Updated`, in UTF-8 with a byte-order mark, CRLF line endings, and standard double-quote quoting.
+- Of 1,203,487 data lines, the profile's rules reject 49,203, and the other 1,154,284 collapse to 1,100,111 parts from 40 suppliers.
+- Most problems are formatting with one clear meaning, and are normalized: prices with `$` or ` USD`, thousands separators, lead times in days, weeks, or `STOCK`, three timestamp formats, and six spellings of every supplier.
+- Rows are rejected for a missing or `N/A` quantity, a missing or `CALL` price, negative values, a missing timestamp, too few columns, being empty, or being a repeated header.
+- Duplicates share their newest timestamp only when the rows are identical lines, so A4 never changes a result (Q3).
+- Six questions are open for T0.3, the biggest being that part numbers differing only by a dash look like different parts, which contradicts C10.
 
 ### Practice ground rules
 
@@ -578,7 +579,9 @@ The UI only needs to be functional and clear.
 - **Q6.** Not asked. Decided by judgment call A10.
 - **Q7.** Not asked. Decided by judgment call A6.
 - **Q8.** What currency and units are used for price and lead time?
-  Profiling (T0.1) should answer this from the data.
+  Answered by profiling (T0.1): prices are in US dollars, the only currency in the file, so A11 holds.
+  Lead times are whole calendar days, written as days, as weeks (7 days each), or as `STOCK` for 0.
+  Quantities are whole units, with no unit-of-measure column.
 - **Q9.** What latency do buyers expect from "fast"?
 - **Q10.** Not asked. Decided by judgment call A8.
 - **Q11.** Resolved by C12.
