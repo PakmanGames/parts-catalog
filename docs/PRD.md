@@ -643,13 +643,15 @@ T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
 
 ### Phase 0: foundations (blocking)
 
-**T0.1 Profile the data** - can run alongside T0.2
+**T0.1 Profile the data** - can run alongside T0.2 and the first half of T0.3
 
-- **Input:** a generated `parts_export.csv`, 100k rows first and then the full file.
+- **Brief:** [`docs/briefs/T0.1-data-profile.md`](briefs/T0.1-data-profile.md), written so an agent can do it.
+- **Input:** the generated `parts_export.csv`: explore on the first 20,000 rows, then count on the full file.
 - **Tools:** DuckDB, which runs SQL straight against the CSV.
 - **Output:** `docs/data-profile.md`, listing every column with its target type, every data problem found with counts and examples, the normalize-or-reject rule for each problem, and the distributions WS-B needs.
-- **Done when:** every column has a type and a rule, and sections 6 and 7.1 of this doc are updated to match.
-- **Constraint:** don't read the generator source (section 6).
+- **Done when:** every column has a type and a rule, and section 6 and Q8 of this doc are updated to match.
+  T0.3 carries the findings into the schema in section 7.1.
+- **Constraint:** don't read the generator source or the answer keys (section 6).
 
 **T0.2 Scaffold** - can run alongside T0.1
 
