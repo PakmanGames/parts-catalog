@@ -1,6 +1,6 @@
 # Parts Catalog - Product Requirements
 
-> **Status:** Draft v0.5 - living doc, updated as new context comes in.
+> **Status:** Draft v0.6 - living doc, updated as new context comes in.
 > **Last updated:** 2026-10-10
 
 ## How to use this doc
@@ -10,6 +10,7 @@ Sections marked **TBD** are waiting on more context.
 Confirmed facts (`C#`), assumptions (`A#`), open questions (`Q#`), and decisions (`D#`) have IDs so they can be referenced from code reviews and the presentation.
 IDs are never reused: when something is resolved or retired, it is marked as such instead of being renumbered.
 Each significant choice goes into the [Decision log](#9-decision-log) with the alternatives and the trade-off, because the presentation is about the reasoning as much as the result.
+Technology details and the alternatives considered for each library live in [`docs/tech-stack-research.md`](tech-stack-research.md).
 
 **For an agent picking up a workstream:**
 Read sections 4 to 7 for what to build and which contracts to follow.
@@ -38,29 +39,34 @@ Then they turn that answer into a quote.
 
 Core loop:
 
-1. Find a part by partial part number, optionally narrowed to one supplier.
-2. Compare the options by sorting on stock quantity, price, or lead time.
-3. Select one or more rows and turn them into a quote for a named customer.
-4. Open that quote again later.
+1. Upload the latest export when it arrives.
+2. Find a part by partial part number, optionally narrowed to one supplier.
+3. Compare the options by sorting on stock quantity, price, or lead time.
+4. Select one or more rows and turn them into a quote for a named customer.
+5. Open that quote again later.
 
 **The nightly import.**
-A new `parts_export.csv` arrives every night with the full catalog, and it is loaded into Postgres.
+A new `parts_export.csv` with the full catalog is produced every night.
+The buyer uploads it in the app, and the parts table shows the new data once the import finishes.
 It must be safe to re-run, whether on the same file or after a crash part-way through.
 
 ## 3. Goals and non-goals
 
 ### Goals
 
-- **G1.** Import the nightly snapshot reliably, so that re-running it is always safe.
+- **G1.** Import the nightly snapshot reliably from the app, so that re-running it is always safe.
 - **G2.** Let the buyer find and compare parts across 1.2M rows at interactive speed.
 - **G3.** Let the buyer create, save, and come back to a quote without changing catalog data.
 - **G4.** Keep the schema and code as simple as the requirements allow, and justify each choice.
+- **G5.** Deploy the app to a private URL.
+  This is the lowest-priority goal and must never delay G1 to G4.
 
 ### Non-goals
 
 Confirmed by the interviewer:
 
-- Security, authentication, or user accounts.
+- Security, authentication, or user accounts in the app.
+  The deployed site still sits behind Cloudflare Access, which needs no app code (D17).
 - A polished UI, as long as it works and is clear.
 
 Assumed:
@@ -69,12 +75,10 @@ Assumed:
 - Pricing logic such as markup rules or customer-specific pricing.
 - Live sync with the ERP.
 - Reserving or decrementing inventory.
-- Import history or audit tables, since the import prints its summary instead.
-- Production deployment.
+- Import history or audit tables, since the app shows the latest import's summary instead.
+- Production hardening such as scaling, monitoring, and backups.
 
-Deferred until after the MVP:
-
-- Protecting against a truncated or partial export wrongly marking many parts unavailable (Q14).
+Deferred until after the MVP: see the [Post-MVP backlog](#12-post-mvp-backlog).
 
 ## 4. Functional requirements
 
@@ -104,7 +108,7 @@ Deferred until after the MVP:
 **R1.4 Safe to re-run.**
 
 - Re-importing the same file changes nothing, including the times recorded for parts already marked unavailable.
-- If an import crashes part-way, re-running it produces the same final state as an uninterrupted run.
+- If an import crashes part-way, re-running it produces the same final state as an uninterrupted run (C4).
 - The newest import is the source of truth (C4, A2).
 
 **R1.5 Bad rows don't break the import.**
@@ -114,14 +118,23 @@ Deferred until after the MVP:
 
 **R1.6 The import reports what it did.**
 
-- Prints counts of rows read, duplicates collapsed, and rows rejected (grouped by reason).
-- Prints counts of parts inserted, updated, unchanged, marked unavailable, and made available again.
-- Prints the duration.
+- Counts of rows read, duplicates collapsed, and rows rejected (grouped by reason).
+- Counts of parts inserted, updated, unchanged, marked unavailable, and made available again.
+- The duration.
+- The app shows this summary when an upload finishes (R1.8), and the CLI prints it.
 
 **R1.7 The buyer isn't disrupted.**
 
 - Reads never see a half-applied import.
 - Browsing keeps working while an import runs.
+
+**R1.8 Import from the app.**
+
+- The buyer chooses `parts_export.csv` in the app, and the app uploads it and runs the import (A8, judgment call).
+- The app shows that the import is running, then shows the R1.6 summary, or the error if it failed.
+- When the import succeeds, the parts table shows the new data without a manual page reload.
+- Starting an upload while another import is running is refused with a clear message.
+- The upload works through Cloudflare's 100 MB request body limit and 100-second response timeout (D10).
 
 ### R2. Browse, search, filter, sort
 
@@ -187,15 +200,18 @@ Deferred until after the MVP:
   The exact target is set after WS-A's first measurement.
 - **NFR3 Correctness over coverage:** data is never silently corrupted, and every rejected row is reported.
 - **NFR4 Exact money:** prices and totals are `numeric` in Postgres and decimal strings in JSON, never floats.
-- **NFR5 Simplicity:** use the fewest tables, columns, indexes, and moving parts that meet the requirements.
-  Every table and index needs a stated reason.
-- **NFR6 Reproducible setup:** one command starts Postgres and the app, and one command runs an import, both documented in the README.
+- **NFR5 Simplicity:** use the fewest tables, columns, indexes, services, and moving parts that meet the requirements.
+  Every table, index, and service needs a stated reason.
+- **NFR6 Reproducible setup:** a fresh clone gets Postgres and the app running with documented commands, and an import can be run from the app or from one CLI command.
+- **NFR7 Tested:** each workstream proves its "done when" list with automated tests against a real Postgres 17 (D16).
+  Browser tests are deferred (section 12).
 
 ## 6. Data
 
 ### What we know
 
 - The file is `parts_export.csv`, generated nightly as a full snapshot, with about 1.2M rows.
+- It is about 126 MB, and about 36 MB after gzip at its default level (45 MB at the fastest level), measured on the generated file.
 - A part's identity is its supplier plus its part number, with spaces, punctuation, and case ignored in both.
 - Each row has a last-updated timestamp, which decides between duplicates.
 - The file repeats parts, sometimes with different formatting of the same part number.
@@ -228,7 +244,7 @@ After that, any change goes through this doc first.
 ### 7.1 Schema
 
 The schema has one SQL function and three tables: `parts`, `quotes`, and `quote_lines`.
-It requires Postgres 17 or later (D3).
+It requires Postgres 17 (D3), which is the version Railway provides.
 
 ```sql
 -- The single definition of "the same" for part numbers and supplier names (C10, C12, A13, D13).
@@ -275,14 +291,28 @@ CREATE TABLE quote_lines (
   Only display spellings can change, when a later file writes them differently.
 - Totals are calculated when a quote is read, not stored, so they can never disagree with the lines.
 - The staging table used by the import is a temporary table, not part of the schema (7.2).
-- WS-B owns the indexes beyond the primary keys and the unique constraint (7.3).
+- In Drizzle, `CREATE EXTENSION pg_trgm` and `normalize_key` go in a hand-written migration that runs before the one creating `parts`, since drizzle-kit can't express either.
 
-### 7.2 Import algorithm
+### 7.2 Import
 
-1. Stream-parse the CSV and normalize each row's fields in application code (D4).
+**Entry points (D10).**
+The import is one function that takes a CSV stream, with two thin callers:
+
+- **Upload:** `POST /api/imports` receives the gzip-compressed CSV, holds it in memory (about 36 MB), and responds `202`.
+  It then decompresses it and runs the import in the background, for example with Next.js `after()`.
+  Responding before importing keeps the request well inside Cloudflare's 100-second timeout.
+- **CLI:** `pnpm import <file>` runs the same function in the foreground and prints the summary, for development and tests.
+
+Only one import runs at a time.
+The latest import's status lives in server memory, stored on `globalThis` so that every route handler sees the same object.
+If the server restarts mid-import, the transaction rolls back, the catalog is unchanged, and the buyer uploads again.
+
+**Algorithm.**
+
+1. Stream-parse the CSV with `csv-parse` and normalize each row's fields in application code (D4).
    The normalizer is a pure function that turns a raw row into either a clean row or a rejection reason.
    It keeps the trimmed part number and supplier name as written, and rejects a row if either has no letters or digits.
-2. In a single transaction (D3):
+2. In a single transaction on one dedicated connection, since `COPY` and the transaction must share it (D3):
    1. Take a transaction-level advisory lock so two imports can't interleave.
    2. Create a temporary staging table that is dropped on commit.
    3. `COPY` the clean rows into staging, including each row's line number in the file.
@@ -294,7 +324,7 @@ CREATE TABLE quote_lines (
       - **In `parts` but not in the file, and still available:** set `unavailable_since = now()`.
       - **Anything else:** write nothing, which is what makes re-running the same file a no-op (D5).
    7. Commit, then run `ANALYZE parts`.
-3. Print the summary required by R1.6, using `MERGE ... RETURNING merge_action()` for the counts.
+3. Record the R1.6 summary, using `MERGE ... RETURNING merge_action()` for the counts.
 
 A part missing from the file keeps the supplier spelling it already had.
 So an unavailable part can show an older spelling of its supplier, which we accept to keep the import to one `MERGE`.
@@ -321,7 +351,7 @@ LIMIT :limit + 1;                                            -- the extra row te
 - The supplier list is one row per `supplier_key`, showing the spelling with the newest `last_updated`.
   It scans `parts`, so WS-B has to check it meets NFR1 too.
 
-Initial index plan, to be confirmed or replaced by WS-B's benchmark:
+Initial index plan, written into the schema by T0.3 and then confirmed or replaced by WS-B's benchmark:
 
 | Index | Serves |
 | --- | --- |
@@ -338,9 +368,46 @@ Benchmark matrix: {no search, selective search, unselective search} x {no suppli
 
 ### 7.4 API contract
 
-The API uses JSON under `/api`.
+The API uses JSON under `/api`, served by Next.js Route Handlers (D15).
+Each handler validates its input with the Zod schemas from `src/contracts/` and calls a plain function in `src/server/`, so the logic can be tested without HTTP.
 Money is sent as decimal strings such as `"12.50"` (NFR4).
-Errors return `400` or `404` with `{ "error": "message" }`.
+Errors return `400`, `404`, `409`, or `413` with `{ "error": "message" }`.
+
+**`POST /api/imports`**
+
+- **Request body:** the CSV compressed with gzip, sent as the raw body with `Content-Type: application/gzip`.
+  The browser compresses it with the built-in `CompressionStream("gzip")`.
+- **`202`:** the body was received and the import has started.
+  Returns the same body as `GET /api/imports/latest`.
+- **`409`:** an import is already running.
+- **`400`:** the body isn't valid gzip.
+- **`413`:** the body is over 100 MB.
+
+**`GET /api/imports/latest`**
+
+The status of the most recent import since the server started.
+`status` is one of `idle`, `running`, `succeeded`, or `failed`.
+`summary` is set once the import succeeds, and `error` once it fails.
+
+```json
+{
+  "status": "succeeded",
+  "startedAt": "2026-10-10T22:00:00Z",
+  "finishedAt": "2026-10-10T22:01:10Z",
+  "summary": {
+    "rowsRead": 1200000,
+    "duplicatesCollapsed": 15000,
+    "rejected": { "price is not a number": 120 },
+    "inserted": 1000,
+    "updated": 25000,
+    "unchanged": 1158000,
+    "markedUnavailable": 300,
+    "madeAvailable": 12,
+    "durationMs": 70000
+  },
+  "error": null
+}
+```
 
 **`GET /api/parts`**
 
@@ -429,21 +496,22 @@ Newest first, with no pagination (A12).
 
 Returns `404` if the quote doesn't exist.
 
-**Import (CLI, not HTTP)** (D10)
+**`GET /api/health`**
 
-`<import command> path/to/parts_export.csv` prints the R1.6 summary.
-It exits `0` on success and non-zero on failure.
-The exact command is fixed in T0.2.
+Returns `200` with `{ "ok": true }` when the app can reach the database.
 
 ### 7.5 UI
 
 The UI only needs to be functional and clear.
 
+- **Import panel:** a file picker and an "Import" button that compresses and uploads the file, then polls `GET /api/imports/latest` every few seconds.
+  It shows a running state, then the summary or the error, and refreshes the parts table on success.
+  The button is disabled while an import is running.
 - **Parts page:** a search box, a supplier dropdown, sortable part number, quantity, price, and lead time headers, previous and next buttons, a checkbox on each row, and a "Selected (N)" panel with a "Create quote" button.
 - **Unavailable parts:** shown dimmed, with a "No longer available" label so availability isn't shown by color alone, and with their checkbox disabled.
 - **Quote form:** a customer name field and one line per selected part, with editable quantity and unit price (prefilled from the part's price), live totals, and a Save button.
 - **Quotes:** a list page and a detail page.
-- The selection stores each selected part's data on the client, so the quote form can prefill unit prices without fetching them again.
+- The selection stores each selected part's data on the client, keyed by part id, so it survives paging and the quote form can prefill unit prices without fetching them again.
 
 ## 8. Facts, assumptions, and open questions
 
@@ -480,7 +548,7 @@ The UI only needs to be functional and clear.
 | A5  | The selection persists across pages and searches, like a cart. | Affects the UI state design. | Open | - |
 | A6  | A quote's quantity may be more than the stock on hand. | Affects validation. | Open | Q7 |
 | A7  | Quotes can't be changed after they are saved. | Keeps the quote model to insert and read only. | Open | - |
-| A8  | The import runs from the CLI. | Decides the import entry point. | Open | Q10 |
+| A8  | The buyer imports by uploading the CSV in the app, so the MVP works end to end from the browser. A CLI calls the same code for development and tests. | Decides the import entry point, and brings in Cloudflare's upload limits (D10). | Judgment call | Q10 |
 | A9  | "Partial part number" means a substring match on the normalized part number. | Decides the search index. | Open | Q5 |
 | A10 | The supplier filter selects one supplier at a time. | Affects the query and indexes. | Open | Q6 |
 | A11 | All prices use one currency. | Affects storage and display. | Open | Q8 |
@@ -500,7 +568,7 @@ The UI only needs to be functional and clear.
 - **Q7.** Can a quote ask for more than the stock on hand?
 - **Q8.** What currency and units are used for price and lead time?
 - **Q9.** What latency do buyers expect from "fast"?
-- **Q10.** Is the import triggered by CLI or cron, or by uploading through the app?
+- **Q10.** Not asked. Decided by judgment call A8.
 - **Q11.** Resolved by C12.
 - **Q12.** Not asked. Decided by judgment call A13.
 - **Q13.** Not asked. Decided by judgment call A14.
@@ -513,18 +581,21 @@ The UI only needs to be functional and clear.
 | --- | --- | --- | --- | --- |
 | D1  | Use Postgres as the datastore. | None | Required by the brief. | Accepted |
 | D2  | Give `parts` a surrogate `bigint` id, with `UNIQUE (supplier_key, part_number_key)` as the natural key. | A composite natural primary key. | v0.2 used part number as a natural key, and that was reversed when identity became supplier plus part number. A two-column text key would be repeated as the tiebreaker in every sort index, in every quote line, in the API, and in every cursor. An id is a small, stable handle, and it stays stable because rows are never deleted (D14). The unique constraint still enforces "no duplicates" and drives the `MERGE`. The cost is one extra column and index. | Proposed |
-| D3  | Run the whole import in one transaction: staging table, deduplicate, then one `MERGE` that inserts, updates, and marks parts unavailable. | `INSERT ... ON CONFLICT` plus a separate `UPDATE` for missing parts; batched commits with resume checkpoints; truncate and reload; load a new table and swap it in. | A crash rolls everything back, so re-running is the same as running fresh, with no resume logic. Postgres MVCC means the buyer keeps reading the previous snapshot until commit. `MERGE ... WHEN NOT MATCHED BY SOURCE` covers all three outcomes in one statement, and it doesn't use up an id for every row the way `ON CONFLICT` does. Unlike `ON CONFLICT`, `MERGE` doesn't guard against concurrent inserts, which is fine because the import is the only process that writes to `parts` and the advisory lock prevents two imports at once. The costs are requiring Postgres 17 or later and a long transaction that holds row locks on changed parts until it commits. | Proposed |
+| D3  | Run the whole import in one transaction: staging table, deduplicate, then one `MERGE` that inserts, updates, and marks parts unavailable. | `INSERT ... ON CONFLICT` plus a separate `UPDATE` for missing parts; batched commits with resume checkpoints; truncate and reload; load a new table and swap it in. | This is also the simplest option, because it needs no extra code. A crash rolls everything back, so re-running is the same as running fresh, with no resume logic (C4). Postgres MVCC means the buyer keeps seeing the previous snapshot until commit, never a half-updated catalog (R1.7). `MERGE ... WHEN NOT MATCHED BY SOURCE` covers all three outcomes in one statement, and it doesn't use up an id for every row the way `ON CONFLICT` does. Unlike `ON CONFLICT`, `MERGE` doesn't guard against concurrent inserts, which is fine because the import is the only process that writes to `parts` and the advisory lock prevents two imports at once. The costs are requiring Postgres 17 or later and a long transaction that holds row locks on changed parts until it commits. | Proposed |
 | D4  | Normalize field types in application code; deduplicate and merge in SQL. | Do everything in SQL by `COPY`ing raw text. | A pure normalizer can be unit tested rule by rule and can give a specific reason for each rejected row. SQL handles the set operations without holding the whole file in memory. | Proposed |
 | D5  | Only write rows whose values or availability changed. | Overwrite every row on every import. | Re-running the same file writes nothing, the counts are accurate, and fewer dead rows are left for vacuum. | Proposed |
 | D6  | Keyset (cursor) pagination. | `OFFSET`/`LIMIT`. | Stays fast at any depth, while `OFFSET` gets slower the deeper you go. The cost is no "jump to page N". | Proposed |
 | D7  | Show no exact total count, only whether a next page exists. | Exact `COUNT(*)`; a planner estimate; a capped count. | An exact count over a large filtered result is slow. The buyer is looking for a few matching parts, not a total. Can be revisited if the interviewer wants totals. | Proposed |
 | D8  | Store the supplier as text on `parts`, with a generated `supplier_key`, and write the spelling from the supplier's newest row onto all of its parts. | A separate `suppliers` table (proposed in v0.4); keep each part's own spelling. | Keeps the schema to one catalog table and the import to one `MERGE`. Writing the newest spelling onto every row means the table and the dropdown always agree. The costs are repeating the supplier name on every row, rewriting a supplier's rows when its newest spelling changes, unavailable parts keeping an older spelling, and a supplier list query that scans `parts`. | Proposed |
 | D9  | A quote line stores the part id, quantity, and unit price. | Copy the supplier and part number onto each line too. | Copying the unit price is enough for R3.5. A part's supplier and part number keys never change for its id, so joining for them is safe. | Proposed |
-| D10 | The import is a CLI command, not an HTTP upload. | An upload endpoint in the app. | A 1.2M-row upload adds timeouts and progress handling that no requirement needs. A nightly job fits a CLI or cron. | Proposed |
+| D10 | Import by uploading the gzip-compressed CSV to `POST /api/imports`, which responds `202` and runs the import in the background inside the web process. A CLI calls the same function. | CLI only (v0.5); split the file by hand into two uploads; DNS-only Cloudflare to avoid the cap; upload straight to object storage; chunked uploads; run the import inside the request; a separate worker service with pg-boss. | The buyer has to be able to import from the app (A8). Cloudflare Access (D17) needs Cloudflare's proxy, which caps request bodies at 100 MB and expects a response within 100 seconds. Compressing in the browser takes the 126 MB file to about 36 MB with one built-in API and no new infrastructure, and the snapshot stays whole, which C11 depends on. Responding `202` before importing avoids the timeout. Splitting by hand risks importing half a snapshot and marking the other half unavailable. DNS-only loses Cloudflare Access. Object storage and chunking work at any size but add infrastructure or a protocol we don't need at 36 MB. A worker with pg-boss is the better long-term home and is in the backlog (section 12). The costs are that a restart mid-import loses the status (the catalog is safe, because the transaction rolls back) and the buyer has to upload again, and that the cap comes back if the compressed file ever nears 100 MB. | Proposed |
 | D11 | Money is `numeric` in Postgres and a decimal string in JSON. | Floats; integer cents. | Exact values without unit conversions in every layer. | Proposed |
-| D12 | Stack. | - | Being decided separately. T0.2 records the choice here. | Pending |
+| D12 | Stack: Next.js 16 (App Router) with TypeScript (`strict`, `noUncheckedIndexedAccess`) and pnpm; Drizzle ORM 0.45 with `pg` and `pg-copy-streams`; Zod 4; `csv-parse`; Tailwind CSS 4, shadcn/ui, and TanStack Table; Vitest with Testcontainers; Postgres 17; Railway hosting behind Cloudflare. | See `docs/tech-stack-research.md`. | One TypeScript codebase for the UI, API, and importer, with SQL-first data access for the bulk import and Zod at every boundary where untrusted data enters. | Accepted |
 | D13 | Define key normalization once, as a SQL function used by the generated key columns, import deduplication, search, and the supplier filter. | Normalize in the importer, and separately in the API; separate rules for part numbers and supplier names. | One definition means "the same part", "the same supplier", and "what search matches" can't drift apart. A normalized search term also can't contain `LIKE` wildcards. Part numbers and supplier names share one rule because C10, C12, and A13 define "the same" identically. The cost is that changing the rule needs a migration that rewrites the key columns. | Proposed |
 | D14 | Mark missing parts with an `unavailable_since` timestamp. | Delete them; an `available` boolean. | C11 asks us to record that a part is no longer available, not to remove it. Deleting would also break quotes that reference the part. A timestamp costs the same as a boolean and also records when the part went away. | Proposed |
+| D15 | Serve a JSON API under `/api` with Route Handlers, which call plain functions in `src/server/`. | Server Components that query the database directly, with Server Actions for writes. | The interviewer asked for routes with a justified design (C9). An explicit API lets the UI workstream build against mocks in parallel. Since the UI matters least (C8), every requirement can also be demonstrated with plain HTTP requests. Keeping the logic in plain functions means it can be tested without HTTP. The cost is client-side data fetching for the table and one more layer than Server Components would need. | Accepted |
+| D16 | Each workstream writes Vitest tests for its own code against Postgres 17 in Testcontainers. Playwright browser tests are deferred. | Defer all tests; a shared Docker Compose test database; an in-memory fake Postgres. | Tests are how parallel agents prove their "done when" lists without waiting for each other, so they add no serial time. Testcontainers gives every test run its own database, so agents in separate worktrees can't clobber each other's data or ports. `COPY`, `MERGE`, and trigram search need a real Postgres. The costs are needing Docker and a few seconds of startup per test run. | Accepted |
+| D17 | Put the deployed site behind Cloudflare Access. | Build a login into the app; a public URL; DNS-only Cloudflare. | C5 means no auth in the app, but a public URL would let anyone import files or create quotes. Access adds a login at the edge with no app code. It needs Cloudflare's proxy, which brings the upload limits that D10 works around. | Accepted |
 
 ## 10. Work breakdown
 
@@ -532,50 +603,73 @@ The UI only needs to be functional and clear.
 T0.1 Profile data --+
                     +--> T0.3 Freeze contracts --+--> WS-A Importer -------+
 T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
-                                                 +--> WS-C Quotes API -----+--> T2 Integrate, E2E, README
-                                                 +--> WS-D Web UI ---------+
+      |                                          +--> WS-C Quotes API -----+--> T2 Integrate, E2E, README
+      |                                          +--> WS-D Web UI ---------+
+      +--> WS-E Deploy (lowest priority, never blocks anything else) ------+
 ```
 
 ### Rules for parallel work
 
-- Each workstream only edits its own paths, so merges don't conflict.
-- Phase 0 owns the shared contracts (the base schema migration, the shared API types, and the fixtures), and they change only through this doc.
-- Migration numbers are assigned up front: `001_schema.sql` belongs to T0.3 and `002_parts_indexes.sql` belongs to WS-B.
+- Each workstream only edits paths it owns (table below), so merges don't conflict.
 - Each workstream runs in its own branch or worktree and merges on its own.
-- Each workstream shows its "done when" items with tests or scripts, not by inspection.
-- The paths below are placeholders until T0.2 sets up the stack.
+- Each workstream proves its "done when" items with Vitest tests or scripts, not by inspection (D16).
+- T0.2 installs every dependency in D12 up front, so Phase 1 workstreams shouldn't need to touch `package.json` or `pnpm-lock.yaml`.
+  If one must add a dependency, it says so in its PR, because lockfile changes conflict.
+- T0.3 writes `src/db/schema.ts`, including the initial indexes from 7.3, and generates all the initial migrations.
+  In Phase 1, only WS-B may change the schema or generate migrations, and only for indexes, because drizzle-kit's migration journal conflicts when two branches add migrations.
+
+| Path | Owner |
+| --- | --- |
+| `src/db/`, `drizzle/` | T0.3; WS-B for index changes only |
+| `src/contracts/` (Zod schemas and types for the API and the clean row) | T0.3 |
+| `tests/fixtures/` | T0.3 |
+| `src/server/importer/`, `src/app/api/imports/`, `scripts/import.ts` | WS-A |
+| `src/server/parts/`, `src/app/api/parts/`, `src/app/api/suppliers/`, `scripts/bench/` | WS-B |
+| `src/server/quotes/`, `src/app/api/quotes/` | WS-C |
+| Everything else under `src/app/`, and `src/components/` | WS-D |
+| Railway config, `docs/deploy.md` | WS-E |
 
 ### Phase 0: foundations (blocking)
 
 **T0.1 Profile the data** - can run alongside T0.2
 
 - **Input:** a generated `parts_export.csv`, 100k rows first and then the full file.
+- **Tools:** DuckDB, which runs SQL straight against the CSV.
 - **Output:** `docs/data-profile.md`, listing every column with its target type, every data problem found with counts and examples, the normalize-or-reject rule for each problem, and the distributions WS-B needs.
 - **Done when:** every column has a type and a rule, and sections 6 and 7.1 of this doc are updated to match.
 - **Constraint:** don't read the generator source (section 6).
 
 **T0.2 Scaffold** - can run alongside T0.1
 
-- **Output:** the chosen stack (D12), the repo layout, a Postgres 17+ container with a pinned version, a migration runner, lint, format, and test setup, and an empty package or directory for each workstream.
-- **Done when:** from a fresh clone, one command starts Postgres, the server, and the web app, `GET /api/health` responds, and the web app renders a placeholder.
+- **Output:**
+  - A Next.js 16 app per D12, built with `output: "standalone"`, with lint and formatting set up and Tailwind and shadcn/ui initialized.
+  - Every D12 dependency installed.
+  - Drizzle configured with `pg`, and `pnpm db:generate` and `pnpm db:migrate` scripts, with no domain tables yet.
+  - Docker Compose running `postgres:17` for local development.
+  - Vitest wired to Postgres 17 in Testcontainers, with one example test that runs a query.
+  - `GET /api/health` from 7.4.
+  - An app shell with navigation to placeholder Parts and Quotes pages.
+  - A stub `pnpm import <file>` script.
+- **Done when:** from a fresh clone, the README's commands bring up Postgres and the app, and `pnpm lint`, `pnpm test`, and `pnpm build` all pass.
+- **Out of scope:** domain tables, API routes other than health, and any feature UI, since those belong to T0.3 and Phase 1.
 
 **T0.3 Freeze contracts** - after T0.1 and T0.2
 
 - **Output:**
-  - `001_schema.sql`, finalized from the data profile, including `normalize_key`.
-  - The shared API types from 7.4, plus the "clean row" type between the normalizer and the loader.
+  - `src/db/schema.ts` and its migrations, finalized from the data profile: the hand-written migration for `pg_trgm` and `normalize_key`, the tables from 7.1, and the initial indexes from 7.3.
+  - Zod schemas in `src/contracts/` for every request and response in 7.4, plus the clean row type between the normalizer and the loader, with TypeScript types inferred from them.
   - Two small CSV fixtures packed with the data traps, a "night 1" and a "night 2", with the database state each should produce, for WS-A.
     Night 2 drops, changes, adds, and re-adds parts, and both nights spell some part numbers and supplier names differently.
   - JSON response fixtures, for WS-D's mocks.
-- **Done when:** the migration applies, the types compile, the fixtures are committed, and section 7 is marked frozen.
+- **Done when:** the migrations apply, the types compile, the fixtures are committed, and section 7 is marked frozen.
 
 ### Phase 1: parallel workstreams
 
 **WS-A Importer** (R1, NFR2)
 
-- **Owns:** `importer/`.
-- **Reads:** sections 4 (R1), 6, 7.1, and 7.2, and `docs/data-profile.md`.
-- **Can split across two agents:** A1 builds the row normalizer and its unit tests, and A2 builds the loader (staging, deduplication, supplier spelling, `MERGE`, summary).
+- **Owns:** `src/server/importer/`, `src/app/api/imports/`, and `scripts/import.ts`.
+- **Reads:** sections 4 (R1), 6, 7.1, 7.2, and 7.4, and `docs/data-profile.md`.
+- **Can split across two agents:** A1 builds the row normalizer and its unit tests, and A2 builds the loader (staging, deduplication, supplier spelling, `MERGE`, summary), the import routes, and the CLI.
   The two meet at the clean row type from T0.3.
 - **Done when:**
   - Unit tests cover every rule in `docs/data-profile.md`.
@@ -585,15 +679,17 @@ T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
   - Parts missing from night 2 are marked unavailable, and parts that come back are available again.
   - A second import of the same file reports nothing inserted, updated, or newly unavailable, and a checksum over `parts` doesn't change.
   - Killing the process mid-import leaves the database unchanged, and re-running it produces the same state as an uninterrupted run.
-  - The full 1.2M-row import time is recorded in section 11.
-- **Out of scope:** HTTP upload, import history tables, and truncated-export protection (Q14).
+  - Uploading a gzipped fixture to `POST /api/imports` returns `202`, and `GET /api/imports/latest` then reports the summary.
+  - A second upload while one is running returns `409`.
+  - The full 1.2M-row file, gzipped and uploaded, finishes importing, and the time is recorded in section 11.
+- **Out of scope:** import history tables, the worker service, and truncated-export protection (section 12).
 
 **WS-B Parts query** (R2, NFR1)
 
-- **Owns:** `server/parts/` (including the suppliers route), `db/migrations/002_parts_indexes.sql`, and `scripts/bench/`.
+- **Owns:** `src/server/parts/`, `src/app/api/parts/`, `src/app/api/suppliers/`, `scripts/bench/`, and index changes in `src/db/` and `drizzle/`.
 - **Reads:** sections 4 (R2), 7.1, 7.3, and 7.4, plus the distributions in `docs/data-profile.md`.
 - **Doesn't wait on WS-A:** it seeds 1.2M synthetic parts with `generate_series`, shaped like the real data, then re-runs the benchmark on real data in Phase 2.
-- **Delivers:** `GET /api/parts`, `GET /api/suppliers`, the indexes, and a benchmark script that runs the 7.3 matrix and the supplier list with `EXPLAIN ANALYZE`.
+- **Delivers:** `GET /api/parts`, `GET /api/suppliers`, any index changes, and a benchmark script that runs the 7.3 matrix and the supplier list with `EXPLAIN ANALYZE`.
 - **Done when:**
   - Integration tests prove that paging over every sort and direction never repeats or skips a row, including across tied and missing values.
   - Integration tests prove that search and the supplier filter ignore spaces, punctuation, and case, and that `%` and `_` in a search term never act as wildcards.
@@ -602,7 +698,7 @@ T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
 
 **WS-C Quotes API** (R3 server side)
 
-- **Owns:** `server/quotes/`.
+- **Owns:** `src/server/quotes/` and `src/app/api/quotes/`.
 - **Reads:** sections 4 (R3), 7.1, and 7.4.
 - **Delivers:** `POST /api/quotes`, `GET /api/quotes`, and `GET /api/quotes/:id`.
 - **Done when:**
@@ -611,35 +707,66 @@ T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
   - A checksum over `parts` is unchanged after creating a quote (R3.4).
   - Changing a part's price, or marking it unavailable, after a quote is saved leaves the quote unchanged (R3.5).
 
-**WS-D Web UI** (R2 and R3 user-facing)
+**WS-D Web UI** (R1.8, R2, and R3 user-facing)
 
-- **Owns:** `web/`.
+- **Owns:** everything under `src/app/` except `src/app/api/`, and `src/components/`.
 - **Reads:** sections 2, 7.4, and 7.5.
-- **Builds against** the shared types and the JSON fixtures from T0.3, mocking the API until WS-B and WS-C land.
-- **Done when:** against the mocks, the buyer can search, filter, sort, page, select across pages, create a quote, and see it in the list and detail pages, with loading, empty, and error states, and with unavailable parts dimmed, labeled, and not selectable.
-- **Out of scope:** visual polish beyond clean and usable.
+- **Builds against** the Zod contracts and the JSON fixtures from T0.3, mocking the API until WS-A, WS-B, and WS-C land.
+- **Done when:** against the mocks, the buyer can upload a file and see the import summary, search, filter, sort, page, select across pages, create a quote, and see it in the list and detail pages.
+  Loading, empty, and error states are handled, and unavailable parts are dimmed, labeled, and not selectable.
+- **Out of scope:** visual polish beyond clean and usable, and Playwright tests (section 12).
+
+**WS-E Deploy** (G5, lowest priority)
+
+- **Starts after:** T0.2 only, since it needs an app to deploy.
+  It runs alongside everything else and never blocks another workstream.
+- **Owns:** the Railway config file and `docs/deploy.md`.
+- **Mostly manual:** account and dashboard steps in Railway and Cloudflare are done by hand.
+  An agent can write the config and a step-by-step checklist.
+- **Delivers:**
+  - A Railway project with the `web` service (the standalone Next.js build) and Postgres 17, connected over Railway's private network.
+  - Migrations run as Railway's pre-deploy step.
+  - A subdomain as a proxied (orange cloud) CNAME, with SSL/TLS mode set to Full (strict).
+  - A Cloudflare Access application that only lets in allowed email addresses (D17).
+- **Done when:** the subdomain shows the Access login and then the app, `GET /api/health` returns `ok`, and, once Phase 2 is done, uploading the full export through the deployed site finishes an import.
 
 ### Phase 2: integration
 
-- **T2.1** Replace the mocks with the real API, import the full 1.2M-row file, re-run the WS-B benchmark on real data, and walk through the whole buyer flow end to end in a browser.
+- **T2.1** Replace the mocks with the real API, upload the full 1.2M-row file through the app, re-run the WS-B benchmark on real data, and walk through the whole buyer flow end to end in a browser.
+  Repeat the upload and walkthrough on the deployed site if WS-E is done.
 - **T2.2** Write the README (setup, import, run, summary of design decisions, and the judgment calls from section 8) and finish the presentation notes.
 
-**If time runs short:** WS-A and WS-B first, then WS-C, then WS-D, since the UI matters least (C8).
+**If time runs short:** WS-A and WS-B first, then WS-C, then WS-D, then WS-E (C8, G5).
 
 ## 11. Results and presentation notes
 
 ### Measurements
 
+- **File size:** 126 MB raw, about 36 MB gzipped at the default level (section 6).
 - **Import:** TBD (WS-A).
 - **Query benchmark:** TBD (WS-B).
 
 ### Talking points
 
-- **Judgment calls made without asking the interviewer:** A13 (supplier name variants are the same supplier, shown under the newest spelling) and A14 (unavailable parts stay visible but can't be quoted).
+- **Judgment calls made without asking the interviewer:** A8 (import from the app), A13 (supplier name variants are the same supplier, shown under the newest spelling), and A14 (unavailable parts stay visible but can't be quoted).
   State these up front, with the reasoning.
+- **Crash safety for free:** one transaction (D3) is the simplest import design and also the one that makes re-running after a crash safe and keeps the buyer from ever seeing a half-applied import.
+- **Working within Cloudflare's limits:** compressing in the browser and responding `202` (D10) instead of splitting the file, dropping Cloudflare Access, or adding object storage and a job queue.
 - **A decision that changed when the requirements did:** D2 moved from a natural key to a surrogate id when identity became supplier plus part number.
 - **Simplicity over normalization:** D8 considered a `suppliers` table and kept a text column instead, accepting a few display edge cases for a simpler schema and import.
 - **Known risk deferred past the MVP:** working out "no longer available" from a full snapshot means a truncated or partial export would wrongly mark many parts unavailable (Q14).
+
+## 12. Post-MVP backlog
+
+Features we would like but deliberately left out of the MVP, with what would make each one worth doing.
+
+| Item | What it adds | Worth doing when |
+| --- | --- | --- |
+| Worker service with pg-boss | Moves the import out of the web process, so deploys and restarts don't interrupt it, and keeps job status in Postgres so it survives restarts. Adds retries and scheduling. BullMQ on Redis is the next step after that (see `docs/tech-stack-research.md`). | An import is lost to a restart or deploy, imports start to slow down browsing, or imports should run on a schedule. |
+| Upload straight to object storage | A presigned multipart upload to a Railway Bucket or Cloudflare R2 removes the 100 MB cap entirely. | The gzipped export approaches 100 MB, which is roughly a raw file of 300 MB or more. |
+| Truncated-export guard (Q14) | Refuses an import that would mark an unusually large share of the catalog unavailable. | Before relying on real nightly files, since one bad export would hide a large part of the catalog. |
+| Playwright end-to-end tests | Browser tests for upload, search, and quoting. | The UI stabilizes, or regressions in the browser flow start slipping through. |
+| Import history | A table of past imports and their rejected rows, for auditing. | The buyer needs to answer "what changed last night" or audit rejected rows. |
 
 ## Appendix A. Original brief
 
