@@ -1,7 +1,7 @@
 # Parts Catalog - Product Requirements
 
 > **Status:** Draft v0.9 - living doc, updated as new context comes in.
-> **Last updated:** 2026-10-10
+> **Last updated:** 2026-10-11
 
 ## How to use this doc
 
@@ -232,6 +232,7 @@ The full profile, with every rule, count, and example, and the queries behind th
 - Rows are rejected for a missing or `N/A` quantity, a missing or `CALL` price, negative values, a missing timestamp, too few columns, being empty, or being a repeated header.
 - Duplicates share their newest timestamp only when the rows are identical lines, so A4 never changes a result (Q3).
 - Six questions are open for T0.3, the biggest being that part numbers differing only by a dash look like different parts, which contradicts C10.
+  That one is decided by judgment call A16: follow C10 and treat them as the same part.
 
 ### Practice ground rules
 
@@ -568,6 +569,7 @@ The UI only needs to be functional and clear.
 | A13 | Supplier names that differ only in spaces, punctuation, or letter case are the same supplier, displayed with the spelling from that supplier's newest row. | Supplier is part of a part's identity, so treating variants as different suppliers would split one part into several rows. | Judgment call | Q12 |
 | A14 | Unavailable parts still appear in the table and search results, dimmed and labeled, but can't be quoted. | The buyer can still tell a customer a part is no longer carried, without quoting it by mistake. | Judgment call | Q13 |
 | A15 | A part that reappears in a later file becomes available again. | Affects the merge. | Open | - |
+| A16 | Part numbers that differ only by a dash or slash, such as `NAS1149-500R` and `NAS1149500R`, are the same part, as C10 says, even though in this file they look like different parts. | Profiling found 251 such groups whose copies have different descriptions and prices a median 6.2 times apart (data profile OQ1). We take the rule as it was given to us, so one identity rule still covers the import, search, and the supplier filter (D13). The cost is that each of those groups becomes one part, showing its newest row's description and price. Treating `-` and `/` as significant was rejected, because it contradicts a confirmed fact. | Judgment call | Q15 |
 
 ### Open questions
 
@@ -589,6 +591,8 @@ The UI only needs to be functional and clear.
 - **Q13.** Not asked. Decided by judgment call A14.
 - **Q14.** Should the import refuse to run when a file would mark an unusually large share of the catalog unavailable, for example a truncated export?
   Deferred until after the MVP.
+- **Q15.** Should part numbers that differ only by a dash or slash be separate parts, since in this file they look like different parts (data profile OQ1)?
+  Not asked. Decided by judgment call A16.
 
 ## 9. Decision log
 
@@ -792,6 +796,9 @@ Because it runs alone, it may edit shared files such as `package.json` scripts, 
   - A10: the supplier filter accepts several suppliers.
   - A13: supplier name variants are the same supplier, shown under the newest spelling.
   - A14: unavailable parts stay visible but can't be quoted.
+  - A16: part numbers that differ only by a dash or slash are the same part, even though the data suggests otherwise.
+- **When the data contradicted a confirmed fact (A16):** profiling showed 251 groups where a dash seems to separate two different parts.
+  We kept the interviewer's rule (C10) and recorded the conflict as a judgment call, instead of quietly overriding it or ignoring it.
 - **Keyset over page numbers (D6, D7):** show the benchmark's `OFFSET` versus keyset timing at a deep page.
 - **Quoting beyond stock (A6):** the rule was first a hard cap at stock, then changed so lead time stays useful for quoting, as the brief describes.
 - **Crash safety for free:** one transaction (D3) is the simplest import design and also the one that makes re-running after a crash safe and keeps the buyer from ever seeing a half-applied import.
