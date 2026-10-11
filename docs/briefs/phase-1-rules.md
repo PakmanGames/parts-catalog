@@ -6,34 +6,38 @@
 
 ## Where the project is
 
-- **Done and on `main`:** the scaffold (T0.2), the data profile (T0.1, [`docs/data-profile.md`](../data-profile.md)), the deploy (WS-E), and the first half of T0.3, which froze the contracts for imports, suppliers, quotes, and health in `src/contracts/`.
-- **In progress:** the second half of T0.3.
-  It adds `src/db/schema.ts` and the migrations, the parts contract, the clean row type, the night 1 and night 2 CSV fixtures with their expected database states, and JSON response fixtures.
-  It is done when it is on `origin/main` and PRD section 7 is marked frozen.
+- **Done and on `main`:** the scaffold (T0.2), the data profile (T0.1, [`docs/data-profile.md`](../data-profile.md)), the deploy (WS-E), and T0.3, which froze PRD section 7.
+- **T0.3 delivered:**
+  - `src/db/schema.ts` and the migrations in `drizzle/`.
+  - Every contract in `src/contracts/`, including the parts contract and `NormalizedRow`, the row type between the normalizer and the loader.
+  - `tests/fixtures/imports/`: the night 1 and night 2 CSV fixtures, with the summary and `parts` table expected after each of five imports.
+  - `tests/fixtures/api/`: JSON response fixtures.
 - Your brief says whether you can start before T0.3 lands, and what to do if you can't.
 
 ## Decisions made after the data profile
 
 These settle the open questions in section 8 of the data profile.
-They will be recorded in PRD section 8 under new IDs.
-Until they are, this list is the source.
-If the PRD and this list ever disagree, stop and ask the user.
+They are recorded in PRD section 8 under the IDs given, and in section 8.1 of the data profile.
+If the PRD and this list ever disagree, the PRD wins, and you should stop and ask the user.
 
 1. **Dashes and slashes don't change a part number (OQ1, PRD A16).**
    `NAS1149-500R` and `NAS1149500R` are the same part, as C10 says, even though the data suggests otherwise.
    `normalize_key` stays as it is.
-2. **The newest row always wins, and bad values become unknown (OQ2, OQ4).**
-   The newest copy of a part is the source of truth, even when some of its values are bad.
-   A quantity, price, or lead time that is missing or invalid becomes NULL, meaning unknown, and the row is kept.
-   That covers blank, `N/A`, `CALL`, and `TBD` values, negative numbers, values that don't parse, and values too large for the column.
-   Only rows that can't be identified or dated are rejected: empty rows, rows with too few columns, repeated headers, rows with no part number or supplier, and rows with no valid last-updated date.
-3. **Future dates are accepted (OQ3).**
+2. **The newest row always wins, even when it is rejected; unknown values are kept (OQ2, OQ4, PRD A17, A19).**
+   A part's newest row, by last-updated timestamp and then by line, is the source of truth.
+   A quantity, price, or lead time the export marks as unknown becomes NULL, and the row is kept: a blank or `N/A` quantity, a blank or `CALL` price, and a blank or `TBD` lead time.
+   Any other bad value rejects the row: a negative quantity or price, a value that doesn't parse, more than 2 decimal places, or a value too large for its column.
+   `REJECT_REASONS` in `src/contracts/import-rows.ts` lists all 18 reasons, in the order they are checked.
+   If a part's newest row is rejected, the part counts as absent from the file: it is marked unavailable, or not inserted if it is new.
+   An older valid copy never stands in for it.
+3. **Future dates are accepted (OQ3, PRD A18).**
    A last-updated date after the import is taken as written, so the newest timestamp still wins (C3), and re-running the same file always gives the same result (R1.4).
-4. **Display spellings (OQ5).**
+4. **Display spellings (OQ5, PRD A13).**
    Part numbers are shown trimmed and upper-cased.
-   Each supplier is shown under its most common spelling among the accepted rows of the file, after trimming and collapsing runs of spaces, with ties broken by a fixed rule.
+   Each supplier is shown under its most common spelling among the accepted rows of the file, after trimming and collapsing runs of spaces.
+   Ties go to the spelling whose newest row is newest, by last-updated timestamp and then by line.
    This replaces A13's "spelling from the newest row".
-5. **Description and NSN are not stored (OQ6).**
+5. **Description and NSN are not stored (OQ6, PRD D20).**
 6. **Unknown values sort last, in both directions (R2.2).**
    This applies to quantity, price, and lead time.
 
