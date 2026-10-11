@@ -1,6 +1,6 @@
 # Known Issues
 
-> **Last updated:** 2026-10-10
+> **Last updated:** 2026-10-11
 
 Errors and likely bugs found while building, kept here so they don't get lost between workstreams.
 Each issue has a `K#` ID that is never reused, like the IDs in [`PRD.md`](PRD.md).
@@ -69,6 +69,20 @@ pnpm runs scripts with `cmd.exe` on Windows, which can't run that, so both comma
 They work on macOS and Linux, and Railway never runs them.
 
 - **Fix if anyone develops on Windows:** set `shell-emulator=true` for pnpm, or replace the shell check with a small Node script that builds the `docker compose` arguments.
+
+### K17. Changes to `.railway/railway.ts` need a manual apply (Low)
+
+Railway doesn't read `.railway/railway.ts` when it deploys, so merging a change to it changes nothing on Railway until someone runs `railway config apply`.
+Until then, the file and Railway can disagree, and the next apply may also include changes nobody reviewed recently.
+
+- **Workaround:** after merging a change to the file, run `railway config plan`, check it, and run `railway config apply` (`docs/deploy.md`).
+- **Fix if it becomes a problem:** add Railway's `railwayapp/config` GitHub Action, which plans on pull requests and applies on merge, with an environment-scoped `RAILWAY_TOKEN` secret.
+
+### K18. Railpack warns that it can't detect the pnpm lockfile version (Low)
+
+Railway's builder, Railpack 0.40.1, logs "could not detect pnpm lockfile version" during every build.
+Railpack reads the pnpm version from `packageManager` in `package.json` before it looks at the lockfile, so it still installs pnpm 12.10.1, and the build succeeds.
+The warning is harmless as long as `packageManager` stays set.
 
 ## Resolved
 
