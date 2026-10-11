@@ -1,0 +1,917 @@
+{
+  "steps": [
+    {
+      "file": "night-1.csv",
+      "summary": {
+        "rowsRead": 35,
+        "duplicatesCollapsed": 5,
+        "rejected": {
+          "row is empty": 2,
+          "row has too few columns": 1,
+          "row is a repeated header": 1,
+          "part number is missing": 1,
+          "part number has no letters or digits": 1,
+          "supplier is missing": 1,
+          "supplier has no letters or digits": 1,
+          "quantity is negative": 1,
+          "quantity is not a whole number": 1,
+          "quantity is too large": 1,
+          "price is negative": 1,
+          "price is not a number": 1,
+          "price has more than 2 decimal places": 1,
+          "price is too large": 1,
+          "lead time is not a number of days or weeks": 1,
+          "lead time is too large": 1,
+          "last updated is missing": 1,
+          "last updated is not a valid date": 1
+        },
+        "newestRejected": 2,
+        "inserted": 11,
+        "updated": 0,
+        "unchanged": 0,
+        "markedUnavailable": 0,
+        "madeAvailable": 0
+      },
+      "parts": [
+        {
+          "supplierKey": "ALLIEDFASTENERSUPPLY",
+          "partNumberKey": "AN960C10L",
+          "supplier": "Allied Fastener Supply",
+          "partNumber": "AN960C10L",
+          "quantity": 1131,
+          "price": "9.15",
+          "leadTimeDays": 14,
+          "lastUpdated": "2026-09-20T08:30:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "ALLIEDFASTENERSUPPLY",
+          "partNumberKey": "MS21045L176",
+          "supplier": "Allied Fastener Supply",
+          "partNumber": "MS21045L176",
+          "quantity": 120,
+          "price": "12.50",
+          "leadTimeDays": 14,
+          "lastUpdated": "2026-09-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "ANCHORFLUIDPOWER",
+          "partNumberKey": "6036232765",
+          "supplier": "Anchor Fluid Power",
+          "partNumber": "6036-2327-65",
+          "quantity": 46,
+          "price": "64.73",
+          "leadTimeDays": 0,
+          "lastUpdated": "2026-03-18T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "APEXMACHINEDPARTS",
+          "partNumberKey": "81H378155",
+          "supplier": "Apex Machined Parts",
+          "partNumber": "81H37815-5",
+          "quantity": 0,
+          "price": "1604.20",
+          "leadTimeDays": 84,
+          "lastUpdated": "2026-06-15T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "APEXMACHINEDPARTS",
+          "partNumberKey": "NAS1149500R",
+          "supplier": "Apex Machined Parts",
+          "partNumber": "NAS1149-500R",
+          "quantity": 12,
+          "price": "3.61",
+          "leadTimeDays": 7,
+          "lastUpdated": "2026-08-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BAYAEROCOMPONENTS",
+          "partNumberKey": "JANTX2N5921",
+          "supplier": "Bay Aero Components",
+          "partNumber": "JANTX2N5921",
+          "quantity": null,
+          "price": null,
+          "leadTimeDays": null,
+          "lastUpdated": "2026-05-06T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BAYAEROCOMPONENTS",
+          "partNumberKey": "RNC55H9852FM",
+          "supplier": "Bay Aero Components",
+          "partNumber": "RNC55H9852FM",
+          "quantity": null,
+          "price": null,
+          "leadTimeDays": null,
+          "lastUpdated": "2026-05-05T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BLUERIDGEBEARINGS",
+          "partNumberKey": "D3899924JG62SC",
+          "supplier": "Blue Ridge Bearings",
+          "partNumber": "D38999/24JG62SC",
+          "quantity": 8,
+          "price": "215.00",
+          "leadTimeDays": 90,
+          "lastUpdated": "2025-12-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BLUERIDGEBEARINGS",
+          "partNumberKey": "M832482390",
+          "supplier": "Blue Ridge Bearings",
+          "partNumber": "M83248/2-390",
+          "quantity": 15,
+          "price": "5356.66",
+          "leadTimeDays": 45,
+          "lastUpdated": "2026-02-10T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BRIDGEWATERAVIONICS",
+          "partNumberKey": "UN16492",
+          "supplier": "Bridgewater Avionics",
+          "partNumber": "UN16492",
+          "quantity": 300,
+          "price": "0.40",
+          "leadTimeDays": 21,
+          "lastUpdated": "2026-09-10T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "CASCADEAEROSPACEPARTS",
+          "partNumberKey": "AN6C35",
+          "supplier": "Cascade Aerospace Parts",
+          "partNumber": "AN6C35",
+          "quantity": 27,
+          "price": "19.11",
+          "leadTimeDays": 120,
+          "lastUpdated": "2027-01-20T04:07:54.000Z",
+          "unavailableSinceStep": null
+        }
+      ]
+    },
+    {
+      "file": "night-1.csv",
+      "summary": {
+        "rowsRead": 35,
+        "duplicatesCollapsed": 5,
+        "rejected": {
+          "row is empty": 2,
+          "row has too few columns": 1,
+          "row is a repeated header": 1,
+          "part number is missing": 1,
+          "part number has no letters or digits": 1,
+          "supplier is missing": 1,
+          "supplier has no letters or digits": 1,
+          "quantity is negative": 1,
+          "quantity is not a whole number": 1,
+          "quantity is too large": 1,
+          "price is negative": 1,
+          "price is not a number": 1,
+          "price has more than 2 decimal places": 1,
+          "price is too large": 1,
+          "lead time is not a number of days or weeks": 1,
+          "lead time is too large": 1,
+          "last updated is missing": 1,
+          "last updated is not a valid date": 1
+        },
+        "newestRejected": 2,
+        "inserted": 0,
+        "updated": 0,
+        "unchanged": 11,
+        "markedUnavailable": 0,
+        "madeAvailable": 0
+      },
+      "parts": [
+        {
+          "supplierKey": "ALLIEDFASTENERSUPPLY",
+          "partNumberKey": "AN960C10L",
+          "supplier": "Allied Fastener Supply",
+          "partNumber": "AN960C10L",
+          "quantity": 1131,
+          "price": "9.15",
+          "leadTimeDays": 14,
+          "lastUpdated": "2026-09-20T08:30:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "ALLIEDFASTENERSUPPLY",
+          "partNumberKey": "MS21045L176",
+          "supplier": "Allied Fastener Supply",
+          "partNumber": "MS21045L176",
+          "quantity": 120,
+          "price": "12.50",
+          "leadTimeDays": 14,
+          "lastUpdated": "2026-09-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "ANCHORFLUIDPOWER",
+          "partNumberKey": "6036232765",
+          "supplier": "Anchor Fluid Power",
+          "partNumber": "6036-2327-65",
+          "quantity": 46,
+          "price": "64.73",
+          "leadTimeDays": 0,
+          "lastUpdated": "2026-03-18T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "APEXMACHINEDPARTS",
+          "partNumberKey": "81H378155",
+          "supplier": "Apex Machined Parts",
+          "partNumber": "81H37815-5",
+          "quantity": 0,
+          "price": "1604.20",
+          "leadTimeDays": 84,
+          "lastUpdated": "2026-06-15T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "APEXMACHINEDPARTS",
+          "partNumberKey": "NAS1149500R",
+          "supplier": "Apex Machined Parts",
+          "partNumber": "NAS1149-500R",
+          "quantity": 12,
+          "price": "3.61",
+          "leadTimeDays": 7,
+          "lastUpdated": "2026-08-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BAYAEROCOMPONENTS",
+          "partNumberKey": "JANTX2N5921",
+          "supplier": "Bay Aero Components",
+          "partNumber": "JANTX2N5921",
+          "quantity": null,
+          "price": null,
+          "leadTimeDays": null,
+          "lastUpdated": "2026-05-06T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BAYAEROCOMPONENTS",
+          "partNumberKey": "RNC55H9852FM",
+          "supplier": "Bay Aero Components",
+          "partNumber": "RNC55H9852FM",
+          "quantity": null,
+          "price": null,
+          "leadTimeDays": null,
+          "lastUpdated": "2026-05-05T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BLUERIDGEBEARINGS",
+          "partNumberKey": "D3899924JG62SC",
+          "supplier": "Blue Ridge Bearings",
+          "partNumber": "D38999/24JG62SC",
+          "quantity": 8,
+          "price": "215.00",
+          "leadTimeDays": 90,
+          "lastUpdated": "2025-12-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BLUERIDGEBEARINGS",
+          "partNumberKey": "M832482390",
+          "supplier": "Blue Ridge Bearings",
+          "partNumber": "M83248/2-390",
+          "quantity": 15,
+          "price": "5356.66",
+          "leadTimeDays": 45,
+          "lastUpdated": "2026-02-10T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BRIDGEWATERAVIONICS",
+          "partNumberKey": "UN16492",
+          "supplier": "Bridgewater Avionics",
+          "partNumber": "UN16492",
+          "quantity": 300,
+          "price": "0.40",
+          "leadTimeDays": 21,
+          "lastUpdated": "2026-09-10T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "CASCADEAEROSPACEPARTS",
+          "partNumberKey": "AN6C35",
+          "supplier": "Cascade Aerospace Parts",
+          "partNumber": "AN6C35",
+          "quantity": 27,
+          "price": "19.11",
+          "leadTimeDays": 120,
+          "lastUpdated": "2027-01-20T04:07:54.000Z",
+          "unavailableSinceStep": null
+        }
+      ]
+    },
+    {
+      "file": "night-2.csv",
+      "summary": {
+        "rowsRead": 17,
+        "duplicatesCollapsed": 2,
+        "rejected": {
+          "row is empty": 1,
+          "price is negative": 1
+        },
+        "newestRejected": 1,
+        "inserted": 5,
+        "updated": 4,
+        "unchanged": 4,
+        "markedUnavailable": 3,
+        "madeAvailable": 0
+      },
+      "parts": [
+        {
+          "supplierKey": "ALLIEDFASTENERSUPPLY",
+          "partNumberKey": "AN960C10L",
+          "supplier": "Allied Fastener Supply",
+          "partNumber": "AN960C10L",
+          "quantity": 900,
+          "price": "9.15",
+          "leadTimeDays": 14,
+          "lastUpdated": "2026-10-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "ALLIEDFASTENERSUPPLY",
+          "partNumberKey": "MS21045L176",
+          "supplier": "Allied Fastener Supply",
+          "partNumber": "MS21045L176",
+          "quantity": 120,
+          "price": "12.50",
+          "leadTimeDays": 14,
+          "lastUpdated": "2026-09-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "ANCHORFLUIDPOWER",
+          "partNumberKey": "6036232765",
+          "supplier": "Anchor Fluid Power",
+          "partNumber": "6036-2327-65",
+          "quantity": 46,
+          "price": "64.73",
+          "leadTimeDays": 0,
+          "lastUpdated": "2026-03-18T00:00:00.000Z",
+          "unavailableSinceStep": 3
+        },
+        {
+          "supplierKey": "APEXMACHINEDPARTS",
+          "partNumberKey": "81H378155",
+          "supplier": "Apex Machined Parts",
+          "partNumber": "81H37815-5",
+          "quantity": 0,
+          "price": "1604.20",
+          "leadTimeDays": 84,
+          "lastUpdated": "2026-06-15T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "APEXMACHINEDPARTS",
+          "partNumberKey": "NAS1149500R",
+          "supplier": "Apex Machined Parts",
+          "partNumber": "NAS1149500R",
+          "quantity": 12,
+          "price": "3.61",
+          "leadTimeDays": 7,
+          "lastUpdated": "2026-08-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BAYAEROCOMPONENTS",
+          "partNumberKey": "JANTX2N5921",
+          "supplier": "Bay Aero Components",
+          "partNumber": "JANTX2N5921",
+          "quantity": null,
+          "price": null,
+          "leadTimeDays": null,
+          "lastUpdated": "2026-05-06T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BAYAEROCOMPONENTS",
+          "partNumberKey": "RNC55H9852FM",
+          "supplier": "Bay Aero Components",
+          "partNumber": "RNC55H9852FM",
+          "quantity": 5,
+          "price": "44.00",
+          "leadTimeDays": 30,
+          "lastUpdated": "2026-10-02T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BLUERIDGEBEARINGS",
+          "partNumberKey": "D3899924JG62SC",
+          "supplier": "Blue Ridge Bearings",
+          "partNumber": "D38999/24JG62SC",
+          "quantity": 8,
+          "price": "215.00",
+          "leadTimeDays": 90,
+          "lastUpdated": "2025-12-01T00:00:00.000Z",
+          "unavailableSinceStep": 3
+        },
+        {
+          "supplierKey": "BLUERIDGEBEARINGS",
+          "partNumberKey": "M832482390",
+          "supplier": "Blue Ridge Bearings",
+          "partNumber": "M83248/2-390",
+          "quantity": 15,
+          "price": "5356.66",
+          "leadTimeDays": 45,
+          "lastUpdated": "2026-02-10T00:00:00.000Z",
+          "unavailableSinceStep": 3
+        },
+        {
+          "supplierKey": "BRIDGEWATERAVIONICS",
+          "partNumberKey": "NAS1611023R",
+          "supplier": "Bridgewater Avionics",
+          "partNumber": "NAS1611-023R",
+          "quantity": 20,
+          "price": "2.60",
+          "leadTimeDays": 30,
+          "lastUpdated": "2026-10-03T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BRIDGEWATERAVIONICS",
+          "partNumberKey": "UN16492",
+          "supplier": "Bridgewater Avionics",
+          "partNumber": "UN16492",
+          "quantity": 300,
+          "price": "0.40",
+          "leadTimeDays": 21,
+          "lastUpdated": "2026-09-10T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "CASCADEAEROSPACEPARTS",
+          "partNumberKey": "AN6C35",
+          "supplier": "Cascade Aerospace Parts",
+          "partNumber": "AN6C35",
+          "quantity": 25,
+          "price": "19.50",
+          "leadTimeDays": 120,
+          "lastUpdated": "2026-10-04T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "COASTALAVIONICSSUPPLY",
+          "partNumberKey": "MS28775218",
+          "supplier": "Coastal Avionics Supply",
+          "partNumber": "MS28775-218",
+          "quantity": 40,
+          "price": "23.55",
+          "leadTimeDays": 14,
+          "lastUpdated": "2026-10-05T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "CONTINENTALHOSECO",
+          "partNumberKey": "AN62894",
+          "supplier": "Continental Hose Co",
+          "partNumber": "AN6289-4",
+          "quantity": 10,
+          "price": "4.25",
+          "leadTimeDays": 7,
+          "lastUpdated": "2026-10-05T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "CONTINENTALHOSECO",
+          "partNumberKey": "AN62896",
+          "supplier": "Continental Hose Co",
+          "partNumber": "AN6289-6",
+          "quantity": 0,
+          "price": "5.10",
+          "leadTimeDays": 0,
+          "lastUpdated": "2026-10-05T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "CONTINENTALHOSECO",
+          "partNumberKey": "AN62898",
+          "supplier": "Continental Hose Co",
+          "partNumber": "AN6289-8",
+          "quantity": 3,
+          "price": "6.00",
+          "leadTimeDays": 7,
+          "lastUpdated": "2026-10-05T00:00:00.000Z",
+          "unavailableSinceStep": null
+        }
+      ]
+    },
+    {
+      "file": "night-2.csv",
+      "summary": {
+        "rowsRead": 17,
+        "duplicatesCollapsed": 2,
+        "rejected": {
+          "row is empty": 1,
+          "price is negative": 1
+        },
+        "newestRejected": 1,
+        "inserted": 0,
+        "updated": 0,
+        "unchanged": 13,
+        "markedUnavailable": 0,
+        "madeAvailable": 0
+      },
+      "parts": [
+        {
+          "supplierKey": "ALLIEDFASTENERSUPPLY",
+          "partNumberKey": "AN960C10L",
+          "supplier": "Allied Fastener Supply",
+          "partNumber": "AN960C10L",
+          "quantity": 900,
+          "price": "9.15",
+          "leadTimeDays": 14,
+          "lastUpdated": "2026-10-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "ALLIEDFASTENERSUPPLY",
+          "partNumberKey": "MS21045L176",
+          "supplier": "Allied Fastener Supply",
+          "partNumber": "MS21045L176",
+          "quantity": 120,
+          "price": "12.50",
+          "leadTimeDays": 14,
+          "lastUpdated": "2026-09-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "ANCHORFLUIDPOWER",
+          "partNumberKey": "6036232765",
+          "supplier": "Anchor Fluid Power",
+          "partNumber": "6036-2327-65",
+          "quantity": 46,
+          "price": "64.73",
+          "leadTimeDays": 0,
+          "lastUpdated": "2026-03-18T00:00:00.000Z",
+          "unavailableSinceStep": 3
+        },
+        {
+          "supplierKey": "APEXMACHINEDPARTS",
+          "partNumberKey": "81H378155",
+          "supplier": "Apex Machined Parts",
+          "partNumber": "81H37815-5",
+          "quantity": 0,
+          "price": "1604.20",
+          "leadTimeDays": 84,
+          "lastUpdated": "2026-06-15T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "APEXMACHINEDPARTS",
+          "partNumberKey": "NAS1149500R",
+          "supplier": "Apex Machined Parts",
+          "partNumber": "NAS1149500R",
+          "quantity": 12,
+          "price": "3.61",
+          "leadTimeDays": 7,
+          "lastUpdated": "2026-08-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BAYAEROCOMPONENTS",
+          "partNumberKey": "JANTX2N5921",
+          "supplier": "Bay Aero Components",
+          "partNumber": "JANTX2N5921",
+          "quantity": null,
+          "price": null,
+          "leadTimeDays": null,
+          "lastUpdated": "2026-05-06T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BAYAEROCOMPONENTS",
+          "partNumberKey": "RNC55H9852FM",
+          "supplier": "Bay Aero Components",
+          "partNumber": "RNC55H9852FM",
+          "quantity": 5,
+          "price": "44.00",
+          "leadTimeDays": 30,
+          "lastUpdated": "2026-10-02T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BLUERIDGEBEARINGS",
+          "partNumberKey": "D3899924JG62SC",
+          "supplier": "Blue Ridge Bearings",
+          "partNumber": "D38999/24JG62SC",
+          "quantity": 8,
+          "price": "215.00",
+          "leadTimeDays": 90,
+          "lastUpdated": "2025-12-01T00:00:00.000Z",
+          "unavailableSinceStep": 3
+        },
+        {
+          "supplierKey": "BLUERIDGEBEARINGS",
+          "partNumberKey": "M832482390",
+          "supplier": "Blue Ridge Bearings",
+          "partNumber": "M83248/2-390",
+          "quantity": 15,
+          "price": "5356.66",
+          "leadTimeDays": 45,
+          "lastUpdated": "2026-02-10T00:00:00.000Z",
+          "unavailableSinceStep": 3
+        },
+        {
+          "supplierKey": "BRIDGEWATERAVIONICS",
+          "partNumberKey": "NAS1611023R",
+          "supplier": "Bridgewater Avionics",
+          "partNumber": "NAS1611-023R",
+          "quantity": 20,
+          "price": "2.60",
+          "leadTimeDays": 30,
+          "lastUpdated": "2026-10-03T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BRIDGEWATERAVIONICS",
+          "partNumberKey": "UN16492",
+          "supplier": "Bridgewater Avionics",
+          "partNumber": "UN16492",
+          "quantity": 300,
+          "price": "0.40",
+          "leadTimeDays": 21,
+          "lastUpdated": "2026-09-10T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "CASCADEAEROSPACEPARTS",
+          "partNumberKey": "AN6C35",
+          "supplier": "Cascade Aerospace Parts",
+          "partNumber": "AN6C35",
+          "quantity": 25,
+          "price": "19.50",
+          "leadTimeDays": 120,
+          "lastUpdated": "2026-10-04T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "COASTALAVIONICSSUPPLY",
+          "partNumberKey": "MS28775218",
+          "supplier": "Coastal Avionics Supply",
+          "partNumber": "MS28775-218",
+          "quantity": 40,
+          "price": "23.55",
+          "leadTimeDays": 14,
+          "lastUpdated": "2026-10-05T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "CONTINENTALHOSECO",
+          "partNumberKey": "AN62894",
+          "supplier": "Continental Hose Co",
+          "partNumber": "AN6289-4",
+          "quantity": 10,
+          "price": "4.25",
+          "leadTimeDays": 7,
+          "lastUpdated": "2026-10-05T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "CONTINENTALHOSECO",
+          "partNumberKey": "AN62896",
+          "supplier": "Continental Hose Co",
+          "partNumber": "AN6289-6",
+          "quantity": 0,
+          "price": "5.10",
+          "leadTimeDays": 0,
+          "lastUpdated": "2026-10-05T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "CONTINENTALHOSECO",
+          "partNumberKey": "AN62898",
+          "supplier": "Continental Hose Co",
+          "partNumber": "AN6289-8",
+          "quantity": 3,
+          "price": "6.00",
+          "leadTimeDays": 7,
+          "lastUpdated": "2026-10-05T00:00:00.000Z",
+          "unavailableSinceStep": null
+        }
+      ]
+    },
+    {
+      "file": "night-1.csv",
+      "summary": {
+        "rowsRead": 35,
+        "duplicatesCollapsed": 5,
+        "rejected": {
+          "row is empty": 2,
+          "row has too few columns": 1,
+          "row is a repeated header": 1,
+          "part number is missing": 1,
+          "part number has no letters or digits": 1,
+          "supplier is missing": 1,
+          "supplier has no letters or digits": 1,
+          "quantity is negative": 1,
+          "quantity is not a whole number": 1,
+          "quantity is too large": 1,
+          "price is negative": 1,
+          "price is not a number": 1,
+          "price has more than 2 decimal places": 1,
+          "price is too large": 1,
+          "lead time is not a number of days or weeks": 1,
+          "lead time is too large": 1,
+          "last updated is missing": 1,
+          "last updated is not a valid date": 1
+        },
+        "newestRejected": 2,
+        "inserted": 0,
+        "updated": 4,
+        "unchanged": 4,
+        "markedUnavailable": 5,
+        "madeAvailable": 3
+      },
+      "parts": [
+        {
+          "supplierKey": "ALLIEDFASTENERSUPPLY",
+          "partNumberKey": "AN960C10L",
+          "supplier": "Allied Fastener Supply",
+          "partNumber": "AN960C10L",
+          "quantity": 1131,
+          "price": "9.15",
+          "leadTimeDays": 14,
+          "lastUpdated": "2026-09-20T08:30:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "ALLIEDFASTENERSUPPLY",
+          "partNumberKey": "MS21045L176",
+          "supplier": "Allied Fastener Supply",
+          "partNumber": "MS21045L176",
+          "quantity": 120,
+          "price": "12.50",
+          "leadTimeDays": 14,
+          "lastUpdated": "2026-09-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "ANCHORFLUIDPOWER",
+          "partNumberKey": "6036232765",
+          "supplier": "Anchor Fluid Power",
+          "partNumber": "6036-2327-65",
+          "quantity": 46,
+          "price": "64.73",
+          "leadTimeDays": 0,
+          "lastUpdated": "2026-03-18T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "APEXMACHINEDPARTS",
+          "partNumberKey": "81H378155",
+          "supplier": "Apex Machined Parts",
+          "partNumber": "81H37815-5",
+          "quantity": 0,
+          "price": "1604.20",
+          "leadTimeDays": 84,
+          "lastUpdated": "2026-06-15T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "APEXMACHINEDPARTS",
+          "partNumberKey": "NAS1149500R",
+          "supplier": "Apex Machined Parts",
+          "partNumber": "NAS1149-500R",
+          "quantity": 12,
+          "price": "3.61",
+          "leadTimeDays": 7,
+          "lastUpdated": "2026-08-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BAYAEROCOMPONENTS",
+          "partNumberKey": "JANTX2N5921",
+          "supplier": "Bay Aero Components",
+          "partNumber": "JANTX2N5921",
+          "quantity": null,
+          "price": null,
+          "leadTimeDays": null,
+          "lastUpdated": "2026-05-06T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BAYAEROCOMPONENTS",
+          "partNumberKey": "RNC55H9852FM",
+          "supplier": "Bay Aero Components",
+          "partNumber": "RNC55H9852FM",
+          "quantity": null,
+          "price": null,
+          "leadTimeDays": null,
+          "lastUpdated": "2026-05-05T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BLUERIDGEBEARINGS",
+          "partNumberKey": "D3899924JG62SC",
+          "supplier": "Blue Ridge Bearings",
+          "partNumber": "D38999/24JG62SC",
+          "quantity": 8,
+          "price": "215.00",
+          "leadTimeDays": 90,
+          "lastUpdated": "2025-12-01T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BLUERIDGEBEARINGS",
+          "partNumberKey": "M832482390",
+          "supplier": "Blue Ridge Bearings",
+          "partNumber": "M83248/2-390",
+          "quantity": 15,
+          "price": "5356.66",
+          "leadTimeDays": 45,
+          "lastUpdated": "2026-02-10T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "BRIDGEWATERAVIONICS",
+          "partNumberKey": "NAS1611023R",
+          "supplier": "Bridgewater Avionics",
+          "partNumber": "NAS1611-023R",
+          "quantity": 20,
+          "price": "2.60",
+          "leadTimeDays": 30,
+          "lastUpdated": "2026-10-03T00:00:00.000Z",
+          "unavailableSinceStep": 5
+        },
+        {
+          "supplierKey": "BRIDGEWATERAVIONICS",
+          "partNumberKey": "UN16492",
+          "supplier": "Bridgewater Avionics",
+          "partNumber": "UN16492",
+          "quantity": 300,
+          "price": "0.40",
+          "leadTimeDays": 21,
+          "lastUpdated": "2026-09-10T00:00:00.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "CASCADEAEROSPACEPARTS",
+          "partNumberKey": "AN6C35",
+          "supplier": "Cascade Aerospace Parts",
+          "partNumber": "AN6C35",
+          "quantity": 27,
+          "price": "19.11",
+          "leadTimeDays": 120,
+          "lastUpdated": "2027-01-20T04:07:54.000Z",
+          "unavailableSinceStep": null
+        },
+        {
+          "supplierKey": "COASTALAVIONICSSUPPLY",
+          "partNumberKey": "MS28775218",
+          "supplier": "Coastal Avionics Supply",
+          "partNumber": "MS28775-218",
+          "quantity": 40,
+          "price": "23.55",
+          "leadTimeDays": 14,
+          "lastUpdated": "2026-10-05T00:00:00.000Z",
+          "unavailableSinceStep": 5
+        },
+        {
+          "supplierKey": "CONTINENTALHOSECO",
+          "partNumberKey": "AN62894",
+          "supplier": "Continental Hose Co",
+          "partNumber": "AN6289-4",
+          "quantity": 10,
+          "price": "4.25",
+          "leadTimeDays": 7,
+          "lastUpdated": "2026-10-05T00:00:00.000Z",
+          "unavailableSinceStep": 5
+        },
+        {
+          "supplierKey": "CONTINENTALHOSECO",
+          "partNumberKey": "AN62896",
+          "supplier": "Continental Hose Co",
+          "partNumber": "AN6289-6",
+          "quantity": 0,
+          "price": "5.10",
+          "leadTimeDays": 0,
+          "lastUpdated": "2026-10-05T00:00:00.000Z",
+          "unavailableSinceStep": 5
+        },
+        {
+          "supplierKey": "CONTINENTALHOSECO",
+          "partNumberKey": "AN62898",
+          "supplier": "Continental Hose Co",
+          "partNumber": "AN6289-8",
+          "quantity": 3,
+          "price": "6.00",
+          "leadTimeDays": 7,
+          "lastUpdated": "2026-10-05T00:00:00.000Z",
+          "unavailableSinceStep": 5
+        }
+      ]
+    }
+  ]
+}

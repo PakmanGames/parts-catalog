@@ -1,0 +1,2 @@
+# The import fixtures reproduce the export byte for byte: a BOM, CRLF line endings, and a Windows-1252 byte.
+tests/fixtures/imports/*.csv -text
