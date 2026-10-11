@@ -1,2 +1,21 @@
 mock_data/
 .lavish/
+
+# dependencies
+/node_modules
+
+# testing
+/coverage
+
+# next.js
+/.next/
+next-env.d.ts
+
+# misc
+.DS_Store
+*.pem
+*.tsbuildinfo
+.pnpm-debug.log*
+
+# `.env` holds the local development defaults and is committed; machine-specific overrides go here.
+.env*.local
