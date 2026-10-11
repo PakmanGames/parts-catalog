@@ -1,0 +1,25 @@
+# Local development database. Tests don't use it: they start their own container (tests/global-setup.ts).
+name: parts-catalog
+
+services:
+  db:
+    # Railway provides Postgres 17 (PRD 7.1). Keep this tag in sync with tests/global-setup.ts.
+    image: postgres:17.11
+    environment:
+      POSTGRES_USER: parts
+      POSTGRES_PASSWORD: parts
+      POSTGRES_DB: parts_catalog
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # Probe over TCP: during first-run init, Postgres listens only on its Unix socket, so a socket
+      # probe would report ready before the app can connect.
+      test: ["CMD", "pg_isready", "--host=127.0.0.1", "--username=parts", "--dbname=parts_catalog"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  db-data:
