@@ -1,6 +1,6 @@
 # Deploying Parts Catalog
 
-> **Status:** Draft - Part 1 can be done now; Part 2 waits for the scaffold (PRD T0.2).
+> **Status:** Draft - Part 1 is done. Part 2 can start now that the scaffold (PRD T0.2) has merged, once its **TBD** steps are filled in.
 > **Last updated:** 2026-10-10
 
 This is the runbook for workstream WS-E and goal G5 in [`PRD.md`](PRD.md).
@@ -13,12 +13,12 @@ If a label here doesn't match exactly, look for the closest equivalent.
 ## How it fits together
 
 ```
-Browser --> Cloudflare: proxy + Access login --> Railway "web" (Next.js) --> Railway "Postgres" 17
+Browser --> Cloudflare: proxy + Access login --> Railway "web" (Next.js) --> Railway "Postgres" 18
             (parts.example.com)                                         (private network)
 ```
 
 - **Cloudflare** owns the domain, proxies traffic, and puts an Access login in front of the site, so the app needs no auth code (PRD D17).
-- **Railway** runs the Next.js app and Postgres 17 in one project, connected over Railway's private network.
+- **Railway** runs the Next.js app and Postgres 18 in one project, connected over Railway's private network.
 - Migrations run on Railway before each deploy, so nothing needs to connect to the database from outside Railway.
 
 Placeholders used below:
@@ -41,13 +41,17 @@ None of these steps need the app.
    Create a new project, add a Postgres database, and pick a region close to you.
    The web service will go in the same region.
    Keep the database service's name as `Postgres`, because Part 2 refers to it by that name.
-3. **Confirm it is Postgres 17.**
+   The database deploys to your workspace's default region, which may not be the one you want.
+   If it lands somewhere else, change it in the database's settings, under Regions, before storing any data.
+3. **Confirm it is Postgres 18.**
    Open the database's data tab, or connect with any client, and run `SELECT version();`.
-   Local development and the tests are pinned to 17, so production should match.
-   If it isn't 17, delete the database and add it again, choosing version 17.
+   Local development and the tests are pinned to 18, so production should match.
+   If it isn't 18, set the database's source image to `ghcr.io/railwayapp-templates/postgres-ssl:18` and replace its volume with a new empty one before storing any data.
+   A data directory created by one major version can't be opened by another.
 4. **Note the public networking setting.**
-   If the database has a public TCP proxy enabled, plan to remove it in the lock-down step at the end of Part 2.
-   It's fine to keep it for now if you want to inspect the database from your laptop.
+   Railway's Postgres currently starts without a public TCP proxy, so there is usually nothing to remove later.
+   To inspect the database from your laptop, run `railway connect Postgres`, which opens a tunnel without making the database public.
+   If the database does have a public TCP proxy, plan to remove it in the lock-down step at the end of Part 2.
 5. **Optional: install the Railway CLI** for logs and one-off commands.
 
    ```sh
@@ -60,17 +64,34 @@ None of these steps need the app.
 1. **Choose the subdomain**, for example `parts.example.com`.
 2. **Check the SSL/TLS encryption mode before changing it.**
    This app needs **Full (strict)**, but the mode applies to the whole domain.
-   - If nothing else on the domain relies on **Flexible**, set the domain to Full (strict).
-   - Otherwise, leave the domain alone and add a **Configuration Rule** that sets Full (strict) only for requests whose hostname equals `parts.example.com`.
+   Full (strict) only connects to origins that serve a valid HTTPS certificate for their hostname, so switching can break other sites on the domain.
+   - If every other proxied hostname's origin serves a valid certificate, set the domain to Full (strict).
+     To check one, take the record's target from Cloudflare DNS and run `curl -sI --resolve www.example.com:443:<target IP> https://www.example.com/`, which fails if the certificate isn't valid.
+   - Otherwise, for example if a site relies on **Flexible** or uses a self-signed certificate, leave the domain alone and add a **Configuration Rule** that sets Full (strict) only for requests whose hostname equals `parts.example.com`.
 3. **Create a Zero Trust organization** if you don't have one.
-   The free plan covers this project, though Cloudflare may ask for a payment method even at $0.
-4. **Create the Access application.**
-   This works before the subdomain exists, because Access matches on the hostname.
-   - In the Zero Trust dashboard, go to Access, then Applications, and add a **Self-hosted** application.
-   - Set the application domain to `parts.example.com`, with no path, so it covers the whole site including `/api`.
-   - Keep the default session duration (24 hours is fine).
-   - Add a policy with action **Allow** that includes **Emails** equal to `you@example.com`.
-   - Use the default **One-time PIN** login method, which emails you a code and needs no identity provider.
+   Choose **Zero Trust Free**, which covers this project, though Cloudflare may ask for a payment method even at $0.
+   Cloudflare gives the organization a random team name, such as `brave-river-1a2b`.
+   It only shows up in the login page's address, `<team>.cloudflareaccess.com`, and you can rename it under Settings.
+4. **Add one-time PIN as a login method.**
+   New organizations start with only the **Cloudflare** login method, which signs in with a Cloudflare account and only lets in members of your Cloudflare account.
+   One-time PIN emails a code to the allowed address instead, and needs no account or identity provider.
+   In the Zero Trust dashboard, go to Integrations, then Identity providers, choose **Add an identity provider**, and pick **One-time PIN**.
+5. **Create the Access application.**
+   This works before the subdomain has a DNS record, because Access matches on the hostname.
+   - Go to Access controls, then Applications, choose **Create new application**, and continue with **Self-hosted and private**.
+   - Add a public hostname for `parts.example.com`, with no path, so it covers the whole site including `/api`.
+   - Choose **Create new policy**, with action **Allow** and an include rule of **Emails** equal to `you@example.com`.
+   - Keep **Accept all available identity providers** on, so the login page offers one-time PIN.
+   - Keep the default session duration of 24 hours.
+6. **Check that Access is active.**
+   The subdomain has no DNS record until Part 2, so a browser can't open it yet.
+   To check the application anyway, send the request straight to Cloudflare, using the address of any proxied hostname on the domain:
+
+   ```sh
+   curl -sI --resolve parts.example.com:443:"$(dig +short example.com | head -1)" https://parts.example.com/
+   ```
+
+   It should return `302`, with a `location` header pointing at `<team>.cloudflareaccess.com`.
 
 ## Part 2: after the scaffold merges
 
@@ -134,6 +155,8 @@ From PRD WS-E:
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
+| The browser can't find `parts.example.com` | Its DNS record doesn't exist yet. | Expected until Part 2 adds the CNAME. Use the `curl` check in Part 1 to test Access before then. |
+| The Access login page has no email field | One-time PIN isn't added as a login method. | Add it as in Part 1, step 4. |
 | Too many redirects | SSL/TLS mode is Flexible for the subdomain. | Set Full (strict), at the domain level or with the Configuration Rule from Part 1. |
 | Cloudflare error 526 | Full (strict) can't validate Railway's certificate yet. | Wait for Railway to issue it, using the grey-cloud step in Part 2 if needed. |
 | Deploy succeeds but the healthcheck fails right away | The server isn't listening on Railway's `PORT` on all interfaces. | Next.js standalone reads `PORT` and `HOSTNAME`, so add `HOSTNAME=0.0.0.0` as a variable. |

@@ -16,7 +16,7 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm dev` starts Postgres 17 in Docker, applies migrations, and serves the app at <http://localhost:3000>.
+`pnpm dev` starts Postgres 18 in Docker, applies migrations, and serves the app at <http://localhost:3000>.
 `GET /api/health` returns `{ "ok": true }` once the app can reach the database.
 
 `.env` holds the local `DATABASE_URL`.
@@ -32,12 +32,14 @@ To override it, put your value in `.env.local`, which Git ignores.
 | `pnpm lint` | Checks linting and formatting with Biome. |
 | `pnpm format` | Fixes formatting, import order, and safe lint issues. |
 | `pnpm typecheck` | Generates Next.js route types and runs `tsc`. |
-| `pnpm test` | Runs Vitest against a throwaway Postgres 17 container. |
+| `pnpm test` | Runs Vitest against a throwaway Postgres 18 container. |
 | `pnpm db:generate` | Generates a migration in `drizzle/` from `src/db/schema.ts`. |
 | `pnpm db:migrate` | Applies pending migrations to `DATABASE_URL`. |
 | `pnpm import:csv <file>` | Imports a parts export from the command line. |
 
 To start over with an empty local database, run `docker compose down --volumes` and then `pnpm dev`.
+Do the same if the database container exits with "Error: in 18+, these Docker images are configured to store database data in a format...".
+That means the volume holds data from an older Postgres version, which Postgres 18 can't open.
 
 ## Tests
 

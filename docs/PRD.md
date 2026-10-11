@@ -1,6 +1,6 @@
 # Parts Catalog - Product Requirements
 
-> **Status:** Draft v0.7 - living doc, updated as new context comes in.
+> **Status:** Draft v0.8 - living doc, updated as new context comes in.
 > **Last updated:** 2026-10-10
 
 ## How to use this doc
@@ -206,7 +206,7 @@ Deferred until after the MVP: see the [Post-MVP backlog](#12-post-mvp-backlog).
 - **NFR5 Simplicity:** use the fewest tables, columns, indexes, services, and moving parts that meet the requirements.
   Every table, index, and service needs a stated reason.
 - **NFR6 Reproducible setup:** a fresh clone gets Postgres and the app running with documented commands, and an import can be run from the app or from one CLI command.
-- **NFR7 Tested:** each workstream proves its "done when" list with automated tests against a real Postgres 17 (D16).
+- **NFR7 Tested:** each workstream proves its "done when" list with automated tests against a real Postgres 18 (D16).
   Browser tests are deferred (section 12).
 
 ## 6. Data
@@ -247,7 +247,7 @@ After that, any change goes through this doc first.
 ### 7.1 Schema
 
 The schema has one SQL function and three tables: `parts`, `quotes`, and `quote_lines`.
-It requires Postgres 17 (D3), which is the version Railway provides.
+It requires Postgres 17 or later (D3), and runs on Postgres 18, the version Railway provides.
 
 ```sql
 -- The single definition of "the same" for part numbers and supplier names (C10, C12, A13, D13).
@@ -602,11 +602,11 @@ The UI only needs to be functional and clear.
 | D9  | A quote line stores the part id, quantity, and unit price. | Copy the supplier and part number onto each line too. | Copying the unit price is enough for R3.5. A part's supplier and part number keys never change for its id, so joining for them is safe. | Accepted |
 | D10 | Import by uploading the gzip-compressed CSV to `POST /api/imports`, which responds `202` and runs the import in the background inside the web process. A CLI calls the same function. | CLI only (v0.5); split the file by hand into two uploads; DNS-only Cloudflare to avoid the cap; upload straight to object storage; chunked uploads; run the import inside the request; a separate worker service with pg-boss. | The buyer has to be able to import from the app (A8). Cloudflare Access (D17) needs Cloudflare's proxy, which caps request bodies at 100 MB and expects a response within 100 seconds. Compressing in the browser takes the 126 MB file to about 36 MB with one built-in API and no new infrastructure, and the snapshot stays whole, which C11 depends on. Responding `202` before importing avoids the timeout. Splitting by hand risks importing half a snapshot and marking the other half unavailable. DNS-only loses Cloudflare Access. Object storage and chunking work at any size but add infrastructure or a protocol we don't need at 36 MB. A worker with pg-boss is the better long-term home and is in the backlog (section 12). The costs are that a restart mid-import loses the status (the catalog is safe, because the transaction rolls back) and the buyer has to upload again, and that the cap comes back if the compressed file ever nears 100 MB. | Accepted |
 | D11 | Money is `numeric` in Postgres and a decimal string in JSON. | Floats; integer cents. | Exact values without unit conversions in every layer. | Accepted |
-| D12 | Stack: Next.js 16 (App Router) with TypeScript (`strict`, `noUncheckedIndexedAccess`) and pnpm on Node.js 24; Drizzle ORM 0.45 with `pg` and `pg-copy-streams`; Zod 4; `csv-parse`; Tailwind CSS 4, shadcn/ui, and TanStack Table; Biome for linting and formatting; Vitest with Testcontainers; `tsx` for CLI scripts; Postgres 17, pinned to `postgres:17.11` locally and in tests; Railway hosting behind Cloudflare. | See `docs/tech-stack-research.md`. For linting, ESLint with Prettier. For data access, postgres.js with raw SQL. | One TypeScript codebase for the UI, API, and importer, with SQL-first data access for the bulk import and Zod at every boundary where untrusted data enters. Biome is one fast tool for linting, formatting, and import order, and Next.js 16 no longer ships `next lint`. | Accepted |
+| D12 | Stack: Next.js 16 (App Router) with TypeScript (`strict`, `noUncheckedIndexedAccess`) and pnpm on Node.js 24; Drizzle ORM 0.45 with `pg` and `pg-copy-streams`; Zod 4; `csv-parse`; Tailwind CSS 4, shadcn/ui, and TanStack Table; Biome for linting and formatting; Vitest with Testcontainers; `tsx` for CLI scripts; Postgres 18, pinned to `postgres:18.6` locally and in tests to match Railway; Railway hosting behind Cloudflare. | See `docs/tech-stack-research.md`. For linting, ESLint with Prettier. For data access, postgres.js with raw SQL. For the database, Postgres 17. | One TypeScript codebase for the UI, API, and importer, with SQL-first data access for the bulk import and Zod at every boundary where untrusted data enters. Biome is one fast tool for linting, formatting, and import order, and Next.js 16 no longer ships `next lint`. The import only needs Postgres 17 or later (D3), and 18 is what Railway now provides by default, so local, tests, and production all run 18. | Accepted |
 | D13 | Define key normalization once, as a SQL function used by the generated key columns, import deduplication, search, and the supplier filter. | Normalize in the importer, and separately in the API; separate rules for part numbers and supplier names. | One definition means "the same part", "the same supplier", and "what search matches" can't drift apart. A normalized search term also can't contain `LIKE` wildcards. Part numbers and supplier names share one rule because C10, C12, and A13 define "the same" identically. The cost is that changing the rule needs a migration that rewrites the key columns. | Accepted |
 | D14 | Mark missing parts with an `unavailable_since` timestamp. | Delete them; an `available` boolean. | C11 asks us to record that a part is no longer available, not to remove it. Deleting would also break quotes that reference the part. A timestamp costs the same as a boolean and also records when the part went away. | Accepted |
 | D15 | Serve a JSON API under `/api` with Route Handlers, which call plain functions in `src/server/`. | Server Components that query the database directly, with Server Actions for writes. | The interviewer asked for routes with a justified design (C9). An explicit API lets the UI workstream build against mocks in parallel. Since the UI matters least (C8), every requirement can also be demonstrated with plain HTTP requests. Keeping the logic in plain functions means it can be tested without HTTP. The cost is client-side data fetching for the table and one more layer than Server Components would need. | Accepted |
-| D16 | Each workstream writes Vitest tests for its own code against Postgres 17 in Testcontainers. Playwright browser tests are deferred. | Defer all tests; a shared Docker Compose test database; an in-memory fake Postgres. | Tests are how parallel agents prove their "done when" lists without waiting for each other, so they add no serial time. Testcontainers gives every test run its own database, so agents in separate worktrees can't clobber each other's data or ports. `COPY`, `MERGE`, and trigram search need a real Postgres. The costs are needing Docker and a few seconds of startup per test run. | Accepted |
+| D16 | Each workstream writes Vitest tests for its own code against Postgres 18 in Testcontainers. Playwright browser tests are deferred. | Defer all tests; a shared Docker Compose test database; an in-memory fake Postgres. | Tests are how parallel agents prove their "done when" lists without waiting for each other, so they add no serial time. Testcontainers gives every test run its own database, so agents in separate worktrees can't clobber each other's data or ports. `COPY`, `MERGE`, and trigram search need a real Postgres. The costs are needing Docker and a few seconds of startup per test run. | Accepted |
 | D17 | Put the deployed site behind Cloudflare Access. | Build a login into the app; a public URL; DNS-only Cloudflare. | C5 means no auth in the app, but a public URL would let anyone import files or create quotes. Access adds a login at the edge with no app code. It needs Cloudflare's proxy, which brings the upload limits that D10 works around. | Accepted |
 
 ## 10. Work breakdown
@@ -657,8 +657,8 @@ T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
   - A Next.js 16 app per D12, built with `output: "standalone"`, with lint and formatting set up and Tailwind and shadcn/ui initialized.
   - Every D12 dependency installed.
   - Drizzle configured with `pg`, and `pnpm db:generate` and `pnpm db:migrate` scripts, with no domain tables yet.
-  - Docker Compose running `postgres:17` for local development.
-  - Vitest wired to Postgres 17 in Testcontainers, with one example test that runs a query.
+  - Docker Compose running `postgres:18` for local development, with the data volume mounted at `/var/lib/postgresql`.
+  - Vitest wired to Postgres 18 in Testcontainers, with one example test that runs a query.
   - `GET /api/health` from 7.4.
   - An app shell with navigation to placeholder Parts and Quotes pages.
   - A stub `pnpm import:csv <file>` script (7.2).
@@ -739,7 +739,7 @@ T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
 - **Mostly manual:** account and dashboard steps in Railway and Cloudflare are done by hand.
   An agent can write the config and a step-by-step checklist.
 - **Delivers:**
-  - A Railway project with the `web` service (the standalone Next.js build) and Postgres 17, connected over Railway's private network.
+  - A Railway project with the `web` service (the standalone Next.js build) and Postgres 18, connected over Railway's private network.
   - Migrations run as Railway's pre-deploy step.
   - A subdomain as a proxied (orange cloud) CNAME, with SSL/TLS mode set to Full (strict).
   - A Cloudflare Access application that only lets in allowed email addresses (D17).

@@ -20,9 +20,7 @@ declare module "vitest" {
 
 export default async function setup(project: TestProject) {
   // Keep this tag in sync with compose.yaml.
-  const container = await new PostgreSqlContainer("postgres:17.11")
-    .withDatabase("migrated")
-    .start();
+  const container = await new PostgreSqlContainer("postgres:18.6").withDatabase("migrated").start();
 
   const pool = new Pool({ connectionString: container.getConnectionUri() });
   try {
