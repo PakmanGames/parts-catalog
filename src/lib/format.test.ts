@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { formatCount, formatDuration, formatMegabytes } from "./format";
+import { formatCount, formatDate, formatDuration, formatLeadTime, formatMegabytes } from "./format";
 
 describe("formatCount", () => {
   test.each([
@@ -33,5 +33,26 @@ describe("formatMegabytes", () => {
     [104_857_600, "104.9 MB"],
   ])("formats %d bytes as %j", (bytes, formatted) => {
     expect(formatMegabytes(bytes)).toBe(formatted);
+  });
+});
+
+describe("formatDate", () => {
+  test.each([
+    ["2026-03-18T00:00:00.000Z", "Mar 18, 2026"],
+    ["2026-03-18T23:59:59Z", "Mar 18, 2026"],
+    ["2027-01-01T00:00:00Z", "Jan 1, 2027"],
+  ])("reads %j in UTC as %j, whatever the local time zone", (iso, formatted) => {
+    expect(formatDate(iso)).toBe(formatted);
+  });
+});
+
+describe("formatLeadTime", () => {
+  test.each([
+    [0, "0 days"],
+    [1, "1 day"],
+    [21, "21 days"],
+    [1_500, "1,500 days"],
+  ])("formats %d as %j", (days, formatted) => {
+    expect(formatLeadTime(days)).toBe(formatted);
   });
 });

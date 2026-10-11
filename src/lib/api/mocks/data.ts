@@ -1,7 +1,10 @@
 /** Seed data for the mock API, shaped like the real export (`docs/data-profile.md`). */
 import type { ImportSummary } from "@/contracts/imports";
+import type { Part } from "@/contracts/parts";
 import type { QuoteResponse } from "@/contracts/quotes";
 import { lineTotalCents } from "@/lib/money";
+import partsPage1 from "../../../../tests/fixtures/api/parts-page-1.json";
+import partsPage2 from "../../../../tests/fixtures/api/parts-page-2.json";
 import savedQuote from "../../../../tests/fixtures/api/quote.json";
 import createdQuote from "../../../../tests/fixtures/api/quote-created.json";
 
@@ -36,7 +39,7 @@ export const NIGHTLY_SUMMARY: Omit<ImportSummary, "durationMs"> = {
 const CENTS_PER_DOLLAR = BigInt(100);
 
 /** Writes cents the way Postgres writes `numeric(12, 2)`, such as "125.00". */
-function toMoney(cents: bigint): string {
+export function toMoney(cents: bigint): string {
   return `${cents / CENTS_PER_DOLLAR}.${(cents % CENTS_PER_DOLLAR).toString().padStart(2, "0")}`;
 }
 
@@ -118,4 +121,66 @@ export function seedQuotes(): QuoteResponse[] {
     fixture(6, 5, savedQuote),
     fixture(7, 2, createdQuote),
   ];
+}
+
+/** When the mock catalog's last import ran, matching the fixtures' `unavailableSince`. */
+const IMPORTED_AT = "2026-10-11T02:00:05.000Z";
+
+/** A small deterministic random generator (mulberry32), so the mock catalog is the same every load. */
+function seededRandom(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+const PART_SHAPES = [
+  "AN960C",
+  "MS21042L",
+  "NAS1149-",
+  "MS24693-C",
+  "M83248/1-",
+  "AS568-",
+  "MS28775-",
+];
+const LEAD_TIMES = [0, 7, 14, 21, 30, 45, 60, 84, 90, 120];
+
+/**
+ * The catalog: the 16 parts of the T0.3 fixtures, plus generated parts so that paging, search, and
+ * the supplier filter have enough rows to work on. The generated parts mix in unknown values,
+ * unavailable parts, the longest part number shape in the file (19 characters), and a supplier
+ * name far longer than any in the file, to check the layout.
+ */
+export function seedParts(): Part[] {
+  const fixtureParts = [...partsPage1.items, ...partsPage2.items];
+  const suppliers = [
+    ...new Set(fixtureParts.map((part) => part.supplier)),
+    "Northstar Defense Logistics",
+    "Consolidated Aerospace Hardware & Fittings Distribution Corporation",
+  ];
+  const random = seededRandom(7);
+  const pick = <T>(items: readonly T[]) => items[Math.floor(random() * items.length)] as T;
+
+  const generated = Array.from({ length: 150 }, (_, i): Part => {
+    const unknown = random();
+    return {
+      id: 100 + i,
+      partNumber:
+        i === 0
+          ? "M39029/58-360-00012"
+          : `${PART_SHAPES[i % PART_SHAPES.length]}${100 + ((i * 37) % 900)}`,
+      supplier: suppliers[i % suppliers.length] as string,
+      quantity: unknown < 0.06 ? null : random() < 0.15 ? 0 : Math.floor(random() * 2_000),
+      price: unknown > 0.95 ? null : (random() * 400).toFixed(2),
+      leadTimeDays: unknown > 0.03 && unknown < 0.09 ? null : pick(LEAD_TIMES),
+      lastUpdated: new Date(
+        Date.UTC(2026, Math.floor(random() * 9), 1 + Math.floor(random() * 28)),
+      ).toISOString(),
+      unavailableSince: random() < 0.08 ? IMPORTED_AT : null,
+    };
+  });
+  return [...fixtureParts, ...generated];
 }

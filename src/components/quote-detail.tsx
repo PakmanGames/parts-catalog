@@ -40,7 +40,7 @@ export function QuoteDetail({ id }: { id: string }) {
         <LoadError
           title="Couldn't load this quote"
           message={quote.error.message}
-          onRetry={quote.retry}
+          onRetry={quote.reload}
         />
       </div>
     );

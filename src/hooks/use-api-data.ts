@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { toError } from "@/lib/utils";
 
 export type ApiData<T> =
-  | { status: "loading" }
+  /** `previous` is the last loaded data, kept so a page can show it while the next load runs. */
+  | { status: "loading"; previous?: T }
   | { status: "error"; error: Error }
   | { status: "ready"; data: T };
 
@@ -13,14 +14,22 @@ export type ApiData<T> =
  */
 export function useApiData<T>(
   load: (signal: AbortSignal) => Promise<T>,
-): ApiData<T> & { retry: () => void } {
+): ApiData<T> & { reload: () => void } {
   const [state, setState] = useState<ApiData<T>>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` isn't read, it only re-runs the load on retry.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` isn't read, it only re-runs the load on `reload`.
   useEffect(() => {
     const controller = new AbortController();
-    setState({ status: "loading" });
+    setState((current) => ({
+      status: "loading",
+      previous:
+        current.status === "ready"
+          ? current.data
+          : current.status === "loading"
+            ? current.previous
+            : undefined,
+    }));
     load(controller.signal).then(
       (data) => {
         if (!controller.signal.aborted) {
@@ -36,6 +45,6 @@ export function useApiData<T>(
     return () => controller.abort();
   }, [load, attempt]);
 
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
-  return { ...state, retry };
+  const reload = useCallback(() => setAttempt((n) => n + 1), []);
+  return { ...state, reload };
 }

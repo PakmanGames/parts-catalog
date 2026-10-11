@@ -10,18 +10,25 @@
  * The scenario lasts until the next full page load.
  *
  * - `slow`: every request takes 4 seconds, to see the loading states.
- * - `empty`: there are no saved quotes.
+ * - `empty`: the catalog has no parts and there are no saved quotes, as before the first import.
  * - `error`: every request fails with a `503`, as if the database were down.
  * - `import-conflict`: another import starts just before yours, so your upload gets a `409`.
  * - `import-fail`: the import runs, then fails.
  */
 import type { ImportStatusResponse } from "@/contracts/imports";
-import { QuoteIdParam, type QuoteListItem, type QuoteResponse } from "@/contracts/quotes";
+import { type Part, type PartSort, readPartsQuery } from "@/contracts/parts";
+import {
+  CreateQuoteRequest,
+  QuoteIdParam,
+  type QuoteListItem,
+  type QuoteResponse,
+} from "@/contracts/quotes";
+import { lineTotalCents, toCents } from "@/lib/money";
 import error409 from "../../../../tests/fixtures/api/error-409.json";
 import error413 from "../../../../tests/fixtures/api/error-413.json";
 import error503 from "../../../../tests/fixtures/api/error-503.json";
 import importFailed from "../../../../tests/fixtures/api/import-failed.json";
-import { IMPORT_DURATION_MS, NIGHTLY_SUMMARY, seedQuotes } from "./data";
+import { IMPORT_DURATION_MS, NIGHTLY_SUMMARY, seedParts, seedQuotes, toMoney } from "./data";
 
 /** The upload limit of `POST /api/imports`, from Cloudflare's request body cap (PRD D10). */
 const MAX_UPLOAD_BYTES = 100_000_000;
@@ -29,6 +36,7 @@ const MAX_UPLOAD_BYTES = 100_000_000;
 type State = {
   scenario: string | null;
   latestImport: ImportStatusResponse;
+  parts: Part[];
   quotes: QuoteResponse[];
 };
 
@@ -47,6 +55,7 @@ function getState(): State {
         summary: null,
         error: null,
       },
+      parts: scenario === "empty" ? [] : seedParts(),
       quotes: scenario === "empty" ? [] : seedQuotes(),
     };
   }
@@ -100,20 +109,27 @@ function settleImport(s: State): void {
     return;
   }
   const finished = { startedAt, finishedAt: new Date(finishedAt).toISOString() };
-  s.latestImport =
-    s.scenario === "import-fail"
-      ? {
-          status: "failed",
-          ...finished,
-          summary: null,
-          error: importFailed.error,
-        }
-      : {
-          status: "succeeded",
-          ...finished,
-          summary: { ...NIGHTLY_SUMMARY, durationMs: IMPORT_DURATION_MS },
-          error: null,
-        };
+  if (s.scenario === "import-fail") {
+    s.latestImport = { status: "failed", ...finished, summary: null, error: importFailed.error };
+    return;
+  }
+  s.latestImport = {
+    status: "succeeded",
+    ...finished,
+    summary: { ...NIGHTLY_SUMMARY, durationMs: IMPORT_DURATION_MS },
+    error: null,
+  };
+  // Like a real nightly file, one part comes back and another drops out, so the parts table
+  // visibly changes when it reloads after the import.
+  s.parts = s.parts.map((part) => {
+    if (part.id === 3) {
+      return { ...part, unavailableSince: null };
+    }
+    if (part.id === 1 && part.unavailableSince === null) {
+      return { ...part, unavailableSince: finished.finishedAt };
+    }
+    return part;
+  });
 }
 
 async function postImport(s: State, body: RequestInit["body"]): Promise<Response> {
@@ -137,6 +153,116 @@ async function postImport(s: State, body: RequestInit["body"]): Promise<Response
   }
   s.latestImport = running(Date.now());
   return json(202, s.latestImport);
+}
+
+/** The same rule as the SQL `normalize_key`, which search, filtering, and sorting all use (D13). */
+function normalizeKey(raw: string): string {
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+const SORT_VALUE: Record<PartSort, (part: Part) => string | number | bigint | null> = {
+  part_number: (part) => normalizeKey(part.partNumber),
+  quantity: (part) => part.quantity,
+  price: (part) => (part.price === null ? null : toCents(part.price)),
+  lead_time: (part) => part.leadTimeDays,
+};
+
+/** Orders by the sort column, then by id in the same direction, with unknown values last (R2.2). */
+function compareParts(sort: PartSort, desc: boolean) {
+  const value = SORT_VALUE[sort];
+  return (a: Part, b: Part) => {
+    const x = value(a);
+    const y = value(b);
+    if (x === null || y === null) {
+      if (x !== y) {
+        return x === null ? 1 : -1;
+      }
+    } else if (x !== y) {
+      return (x < y ? -1 : 1) * (desc ? -1 : 1);
+    }
+    return (a.id - b.id) * (desc ? -1 : 1);
+  };
+}
+
+const CURSOR = /^mock-cursor-(\d+)$/;
+
+/** The cursor is an offset here; the real API's is a keyset position, but both are opaque. */
+function listParts(s: State, params: URLSearchParams): Response {
+  const query = readPartsQuery(params);
+  if (!query.success) {
+    const [issue] = query.error.issues;
+    return error(400, `${issue?.path.join(".")}: ${issue?.message}`);
+  }
+  const { q, supplier, sort, dir, limit, cursor } = query.data;
+  const offset = cursor === undefined ? 0 : Number(CURSOR.exec(cursor)?.[1] ?? Number.NaN);
+  if (Number.isNaN(offset)) {
+    return error(400, "cursor: The cursor isn't valid.");
+  }
+  const term = normalizeKey(q ?? "");
+  const suppliers = new Set(supplier.map(normalizeKey));
+  const matches = s.parts
+    .filter(
+      (part) =>
+        normalizeKey(part.partNumber).includes(term) &&
+        (suppliers.size === 0 || suppliers.has(normalizeKey(part.supplier))),
+    )
+    .sort(compareParts(sort, dir === "desc"));
+  const end = offset + limit;
+  return json(200, {
+    items: matches.slice(offset, end),
+    nextCursor: end < matches.length ? `mock-cursor-${end}` : null,
+  });
+}
+
+function listSuppliers(s: State): Response {
+  const items = [...new Set(s.parts.map((part) => part.supplier))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+  return json(200, { items });
+}
+
+function postQuote(s: State, body: RequestInit["body"]): Response {
+  let input: unknown;
+  try {
+    input = JSON.parse(String(body));
+  } catch {
+    return error(400, "The request body isn't valid JSON.");
+  }
+  const request = CreateQuoteRequest.safeParse(input);
+  if (!request.success) {
+    const [issue] = request.error.issues;
+    return error(400, `${issue?.path.join(".")}: ${issue?.message}`);
+  }
+  const lines = [];
+  for (const [index, line] of request.data.lines.entries()) {
+    const part = s.parts.find((candidate) => candidate.id === line.partId);
+    if (!part) {
+      return error(400, `lines.${index}.partId: Part ${line.partId} doesn't exist.`);
+    }
+    if (part.unavailableSince !== null) {
+      return error(
+        400,
+        `lines.${index}.partId: ${part.partNumber} from ${part.supplier} is no longer available.`,
+      );
+    }
+    lines.push({
+      partId: part.id,
+      partNumber: part.partNumber,
+      supplier: part.supplier,
+      quantity: line.quantity,
+      unitPrice: toMoney(toCents(line.unitPrice)),
+      lineTotal: lineTotalCents(line.unitPrice, line.quantity),
+    });
+  }
+  const quote: QuoteResponse = {
+    id: Math.max(0, ...s.quotes.map((saved) => saved.id)) + 1,
+    customerName: request.data.customerName,
+    createdAt: new Date().toISOString(),
+    lines: lines.map((line) => ({ ...line, lineTotal: toMoney(line.lineTotal) })),
+    total: toMoney(lines.reduce((sum, line) => sum + line.lineTotal, BigInt(0))),
+  };
+  s.quotes.push(quote);
+  return json(201, quote);
 }
 
 function listQuotes(s: State): Response {
@@ -176,6 +302,16 @@ export async function mockFetch(path: string, init: RequestInit = {}): Promise<R
   if (method === "GET" && path === "/api/imports/latest") {
     settleImport(s);
     return json(200, s.latestImport);
+  }
+  const url = new URL(path, window.location.origin);
+  if (method === "GET" && url.pathname === "/api/parts") {
+    return listParts(s, url.searchParams);
+  }
+  if (method === "GET" && path === "/api/suppliers") {
+    return listSuppliers(s);
+  }
+  if (method === "POST" && path === "/api/quotes") {
+    return postQuote(s, init.body);
   }
   if (method === "GET" && path === "/api/quotes") {
     return listQuotes(s);

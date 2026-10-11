@@ -29,7 +29,7 @@ export function QuoteList() {
       <LoadError
         title="Couldn't load quotes"
         message={quotes.error.message}
-        onRetry={quotes.retry}
+        onRetry={quotes.reload}
       />
     );
   }
