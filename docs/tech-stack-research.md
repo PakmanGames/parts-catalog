@@ -29,7 +29,7 @@ See [Getting the file into the system](#getting-the-file-into-the-system).
 |---|---|---|
 | App framework | Next.js 16 (App Router) + TypeScript | Your preference, and one codebase for UI and API |
 | Schema validation | Zod 4, alongside Drizzle for the database schema | Zod checks untrusted input at runtime; Drizzle defines the tables |
-| Database | Postgres 17 on Railway | Set-based cleaning in SQL, fast bulk loads, `MERGE` for re-imports, substring search via `pg_trgm` |
+| Database | Postgres 18 on Railway | Set-based cleaning in SQL, fast bulk loads, `MERGE` for re-imports, substring search via `pg_trgm` |
 | Data access | Drizzle ORM + `pg` (node-postgres) | SQL-first and easy to mix with raw SQL for bulk loads |
 | Upload | The browser gzips the whole CSV and posts it to a Route Handler | 126 MB becomes about 36 MB, under Cloudflare's 100 MB cap, with no manual split or object storage |
 | Bulk ingestion | Streaming `csv-parse` + `COPY` into a temporary staging table, then one `MERGE`, all in one transaction | Flat memory use, fast loads, and crash safety for free; see [much larger files](#much-larger-files) |
@@ -102,7 +102,9 @@ Postgres fits this project well.
 Railway Hobby allows Postgres volumes up to 5 GB.
 That is plenty: the parts file is 126 MB as CSV, and even with indexes and the temporary staging copy during an import, the database should stay in the low single-digit GB at most.
 
-For local development, run Postgres in Docker with the same major version Railway uses, which is 17.
+For local development, run Postgres in Docker with the same major version Railway uses, which is 18.
+The `postgres:18` image keeps its data in `/var/lib/postgresql/18/docker`, so mount the data volume at `/var/lib/postgresql`.
+Mounting it at `/var/lib/postgresql/data`, as older versions did, makes the container exit with an error.
 
 ### Data access: Drizzle ORM
 
@@ -206,7 +208,7 @@ Moving to BullMQ later then only changes the wiring, not the job code.
 One Railway project with these services:
 
 - `web`: Next.js (standalone build), public, on a custom subdomain.
-- `postgres`: Railway Postgres 17, reached over the private network (`*.railway.internal`), so there's no egress cost and no public database endpoint.
+- `postgres`: Railway Postgres 18, reached over the private network (`*.railway.internal`), so there's no egress cost and no public database endpoint.
 - `worker` (post-MVP): the same repo with the worker entry point, and no public domain.
 
 Cloudflare's role is DNS: a CNAME for the subdomain (for example `parts.<your-domain>`) pointing at the Railway domain.
@@ -272,7 +274,7 @@ Only Playwright is deferred.
 
 - **Vitest** (5.x) for unit and integration tests.
   The cleaning and normalization rules are the highest-value tests in this project, so build table-driven tests from real messy rows.
-- **Testcontainers** (`@testcontainers/postgresql`) for integration tests against a real Postgres 17.
+- **Testcontainers** (`@testcontainers/postgresql`) for integration tests against a real Postgres 18.
   `COPY`, `MERGE`, and trigram queries can't be tested against an in-memory fake.
   Each test run gets its own database container, so agents working in separate worktrees don't collide on data or ports.
 - **Playwright** (post-MVP) for the end-to-end flow: upload the file, wait for the import, and check the summary.

@@ -59,7 +59,7 @@ If WS-D adds `public/`, the production server will return 404 for those files.
 
 ### K5. The Postgres image tag is pinned in two places (Low)
 
-`compose.yaml` and `tests/global-setup.ts` both pin `postgres:17.11`, and nothing checks that they match.
+`compose.yaml` and `tests/global-setup.ts` both pin `postgres:18.6`, and nothing checks that they match.
 Both files have a comment pointing at the other.
 
 ### K6. A missing `DATABASE_URL` in production falls back to localhost (Low)
