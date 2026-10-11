@@ -24,20 +24,30 @@ The migrator also ignores edits to a migration that has already been applied, an
 - **If it happens:** regenerate the older migration so it sorts last, and reset local databases with `docker compose down --volumes`.
 - **Who should know:** T0.3 and WS-B.
 
-### K2. Every worktree shares one local dev database (Low)
+### K2. Every worktree shares one local dev database (Medium)
 
-`compose.yaml` names the project `parts-catalog`, so all worktrees and branches use the same Postgres container and volume.
+`compose.yaml` names the project `parts-catalog` and binds host port 5432, so all worktrees and branches use the same Postgres container and volume.
 Migrations, imports, and quotes from one branch show up in every other branch's dev server.
 Tests are not affected, because each test run starts its own container.
 
-- **Workaround:** `docker compose down --volumes`, then `pnpm dev`, to start from an empty database.
-- **Fix if it becomes a problem:** give each worktree its own `COMPOSE_PROJECT_NAME` and host port, with a matching `DATABASE_URL` in `.env.local`.
+This becomes a real problem in Phase 1, when agents work in parallel worktrees.
+WS-B seeds 1.2M synthetic parts for its benchmark into the same `parts` table that WS-A imports the real file into, so each would corrupt the other's data and timings.
+
+- **Fix before Phase 1:** give each worktree its own Compose project and host port.
+  - Make the host port configurable in `compose.yaml`: `"${DB_PORT:-5432}:5432"`.
+  - Set `COMPOSE_PROJECT_NAME`, `DB_PORT`, and a `DATABASE_URL` with the same port in each worktree's `.env.local`. `COMPOSE_PROJECT_NAME` overrides the `name:` in `compose.yaml`.
+  - Compose only reads `.env`, so the `dev` script has to pass `.env.local` to it as well, for example with `--env-file`.
+  - `pnpm db:migrate` and `pnpm import:csv` also load only `.env` (`--env-file-if-exists=.env`), so they ignore `.env.local` today and would migrate or import into the default database. They need to load `.env.local` too, with it taking precedence.
+  - This also fixes K3.
+- **At minimum:** WS-B runs its benchmark in its own Testcontainers database instead of the dev database.
+- **Workaround until then:** `docker compose down --volumes`, then `pnpm dev`, to start from an empty database.
 
 ### K3. `pnpm dev` fails if something else is using port 5432 (Low)
 
 A local Postgres, such as one installed with Homebrew, makes `docker compose up` fail with "port is already allocated".
 
-- **Workaround:** stop the other Postgres, or change the host port in `compose.yaml` and set the matching `DATABASE_URL` in `.env.local`.
+- **Workaround:** stop the other Postgres.
+  Moving this project's database to another port only works after the K2 fix, because `pnpm db:migrate` ignores a `DATABASE_URL` set in `.env.local`.
 
 ### K4. The standalone build doesn't copy `public/` (Low)
 
@@ -76,6 +86,24 @@ React reports this as a hydration mismatch, and the Next.js dev overlay shows "1
 It isn't caused by app code and doesn't happen without the extension.
 
 - **Options:** ignore it, or add `suppressHydrationWarning` to `<html>` in `src/app/layout.tsx`, which also hides real mismatches on that one element.
+
+### K15. Cache Components can freeze `GET` routes at build time (High)
+
+`next.config.ts` enables `cacheComponents`, so Next.js prerenders a `GET` route handler during the build when the handler reads nothing from the request (K14).
+K14 fixed this for `GET /api/health` only.
+Three planned routes read nothing from the request, so they would be frozen the same way:
+
+- `GET /api/imports/latest` would always return the status from build time (`idle`), so the import panel would never see an import finish (PRD R1.8).
+- `GET /api/quotes` would always return the quote list from build time (PRD R3.3).
+- `GET /api/suppliers` would always return the supplier list from build time, or make the build fail when it can't reach the database.
+
+`GET /api/parts` and `GET /api/quotes/:id` read the request, so they stay dynamic.
+
+- **Fix:** turn off `cacheComponents` in `next.config.ts`, and check whether `partialPrefetching` still applies without it.
+  The UI fetches all of its data from `/api` in the browser (PRD D15), so Cache Components adds nothing here.
+- **Alternative:** keep it, and make every `GET` handler call `await connection()` first, like the health route.
+- **When:** before Phase 1, since WS-A, WS-B, and WS-C all add `GET` handlers.
+- **Who should know:** T0.3, WS-A, WS-B, and WS-C.
 
 ## Resolved
 
