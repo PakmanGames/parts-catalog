@@ -1,6 +1,6 @@
 # Parts Catalog - Product Requirements
 
-> **Status:** Draft v0.6 - living doc, updated as new context comes in.
+> **Status:** Draft v0.7 - living doc, updated as new context comes in.
 > **Last updated:** 2026-10-10
 
 ## How to use this doc
@@ -103,14 +103,14 @@ Deferred until after the MVP: see the [Post-MVP backlog](#12-post-mvp-backlog).
 - Part numbers that differ only in spaces, punctuation, or letter case are the same part number (C10, C12).
 - Supplier names that differ only in spaces, punctuation, or letter case are the same supplier, shown under the spelling from that supplier's newest row (A13, judgment call).
 - When the file repeats a part, the row with the newest last-updated timestamp wins, wherever it sits in the file (C3).
-- Repeated rows with the same timestamp are resolved deterministically (A4, Q3).
+- When repeated rows also share the same timestamp, the row later in the file wins (A4, judgment call).
 - The database never holds two rows for the same part.
 
 **R1.4 Safe to re-run.**
 
 - Re-importing the same file changes nothing, including the times recorded for parts already marked unavailable.
 - If an import crashes part-way, re-running it produces the same final state as an uninterrupted run (C4).
-- The newest import is the source of truth (C4, A2).
+- The newest import is the source of truth (C4), even when it is an older file than the one before it (A2, judgment call).
 
 **R1.5 Bad rows don't break the import.**
 
@@ -153,16 +153,16 @@ Deferred until after the MVP: see the [Post-MVP backlog](#12-post-mvp-backlog).
 **R2.3 Search by partial part number.**
 
 - The search term is normalized the same way as part numbers (C10, C12), so "ab 123" finds "AB-123-X".
-- It matches anywhere in the part number (A9, Q5).
+- It matches anywhere in the part number, not only at the start, with no typo tolerance: a part either contains the term or it doesn't (A9, judgment call).
 
 **R2.4 Filter by supplier.**
 
-- Single-select from the list of suppliers (A10, Q6).
+- The buyer can pick one or more suppliers from the list (A10, judgment call).
 - Each supplier appears once in the list, under the spelling from its newest row (A13).
 
 **R2.5 Every combination stays fast.**
 
-- Every combination of search, supplier filter, sort, direction, and page position meets NFR1 at 1.2M rows, including deep pages.
+- Every combination of search, supplier filter (none, one, or several suppliers), sort, direction, and page position meets NFR1 at 1.2M rows, including deep pages.
 
 ### R3. Quotes
 
@@ -178,6 +178,8 @@ Deferred until after the MVP: see the [Post-MVP backlog](#12-post-mvp-backlog).
 - Each line has a part, a quantity, and a unit price.
 - Unit price defaults to the part's price from the file, and the buyer can edit it (C6).
 - Validation: the customer name is required, quantity is a positive integer, unit price is non-negative, there is at least one line, each part appears at most once, and every part is currently available.
+- Quantity may be more than the stock on hand, including for parts with no stock (A6, judgment call).
+  When it is, the form shows a warning with how many units are beyond stock and the part's lead time, for example "80 more than in stock, lead time 21 days".
 - Line totals and the quote total are calculated from the lines and shown.
 
 **R3.3 Save and view later.**
@@ -337,7 +339,7 @@ So an unavailable part can show an older spelling of its supplier, which we acce
 SELECT id, part_number, supplier, quantity, price, lead_time_days, last_updated, unavailable_since
 FROM parts
 WHERE part_number_key LIKE '%' || normalize_key(:q) || '%'  -- only when q is given
-  AND supplier_key = normalize_key(:supplier)                -- only when supplier is given
+  AND supplier_key = ANY(:supplier_keys)                     -- only when suppliers are given, each normalized with normalize_key
   AND (:sort_col, id) > (:cursor_value, :cursor_id)          -- keyset, flipped for desc
 ORDER BY :sort_col :dir, id :dir
 LIMIT :limit + 1;                                            -- the extra row tells us whether a next page exists
@@ -353,12 +355,16 @@ LIMIT :limit + 1;                                            -- the extra row te
 - The supplier list is one row per `supplier_key`, showing the spelling with the newest `last_updated`.
   It scans `parts`, so WS-B has to check it meets NFR1 too.
 
-Initial index plan, written into the schema by T0.3 and then confirmed or replaced by WS-B's benchmark:
+The index plan below is a starting point, and it is expected to change.
+T0.3 writes it into the schema, and WS-B then revises it from the benchmark results, which is the one place in Phase 1 where the schema may change (section 10).
+Keyset pagination (D6) doesn't replace these indexes; it relies on them, because each page starts by seeking into the index for the chosen sort.
+
+Initial index plan:
 
 | Index | Serves |
 | --- | --- |
 | `(quantity, id)`, `(price, id)`, `(lead_time_days, id)`, `(part_number_key, id)` | Each sort with no supplier filter, in both directions (backward scan). |
-| `(supplier_key, quantity, id)`, `(supplier_key, price, id)`, `(supplier_key, lead_time_days, id)` | Supplier filter plus each sort. |
+| `(supplier_key, quantity, id)`, `(supplier_key, price, id)`, `(supplier_key, lead_time_days, id)` | One supplier plus each sort. With several suppliers, Postgres may instead walk the sort index and skip other suppliers' rows, or collect each supplier's rows and sort them; WS-B checks which it picks. |
 | `UNIQUE (supplier_key, part_number_key)` (from 7.1) | Supplier filter with the part number sort, and the supplier list, if the planner uses it for those (WS-B to confirm). |
 | GIN `part_number_key gin_trgm_ops` | Substring search. |
 
@@ -366,7 +372,9 @@ The hard case is a short or common search term that matches a large share of row
 The planner has to choose between collecting the trigram matches and sorting them, and walking a sort index while filtering.
 WS-B has to benchmark this case explicitly.
 
-Benchmark matrix: {no search, selective search, unselective search} x {no supplier, large supplier, small supplier} x {each sort column} x {asc, desc} x {first page, deep page}.
+Benchmark matrix: {no search, selective search, unselective search} x {no supplier, one large supplier, one small supplier, three suppliers} x {each sort column} x {asc, desc} x {first page, deep page}.
+
+The benchmark also times `OFFSET` paging at the same deep page, so the presentation can show why D6 chose keyset.
 
 ### 7.4 API contract
 
@@ -416,7 +424,7 @@ The status of the most recent import since the server started.
 | Param | Values | Default |
 | --- | --- | --- |
 | `q` | Partial part number. | None |
-| `supplier` | A supplier name from `/api/suppliers`, matched after normalization. | None |
+| `supplier` | A supplier name from `/api/suppliers`, matched after normalization. Repeat it to filter by several: `?supplier=A&supplier=B`. | None |
 | `sort` | `part_number`, `quantity`, `price`, `lead_time` | `part_number` |
 | `dir` | `asc`, `desc` | `asc` |
 | `limit` | 1 to 200 | 50 |
@@ -509,9 +517,10 @@ The UI only needs to be functional and clear.
 - **Import panel:** a file picker and an "Import" button that compresses and uploads the file, then polls `GET /api/imports/latest` every few seconds.
   It shows a running state, then the summary or the error, and refreshes the parts table on success.
   The button is disabled while an import is running.
-- **Parts page:** a search box, a supplier dropdown, sortable part number, quantity, price, and lead time headers, previous and next buttons, a checkbox on each row, and a "Selected (N)" panel with a "Create quote" button.
+- **Parts page:** a search box, a supplier multi-select, sortable part number, quantity, price, and lead time headers, previous and next buttons, a checkbox on each row, and a "Selected (N)" panel with a "Create quote" button.
 - **Unavailable parts:** shown dimmed, with a "No longer available" label so availability isn't shown by color alone, and with their checkbox disabled.
 - **Quote form:** a customer name field and one line per selected part, with editable quantity and unit price (prefilled from the part's price), live totals, and a Save button.
+  A line whose quantity is above the part's stock shows a warning with the shortfall and the lead time (R3.2).
 - **Quotes:** a list page and a detail page.
 - The selection stores each selected part's data on the client, keyed by part id, so it survives paging and the quote form can prefill unit prices without fetching them again.
 
@@ -544,15 +553,15 @@ The UI only needs to be functional and clear.
 | ID  | Assumption | Why it matters | Status | Linked question |
 | --- | --- | --- | --- | --- |
 | A1  | Replaced by C11. | - | Retired | Q2 |
-| A2  | Importing an older file after a newer one overwrites the newer data, because the latest run wins. | Decides whether the merge compares timestamps across imports. | Open | Q4 |
+| A2  | Importing an older file after a newer one overwrites the newer data, because the latest run wins. | Decides whether the merge compares timestamps across imports. It doesn't, so re-importing an old file rolls prices and stock back and marks parts missing from it unavailable. | Judgment call | Q4 |
 | A3  | Replaced by C12. | - | Retired | Q11 |
-| A4  | When duplicates share a timestamp, the later row in the file wins. | Keeps the import deterministic. | Open | Q3 |
+| A4  | When duplicates share a timestamp, the later row in the file wins. | Keeps the import deterministic. Exports usually append later edits, so "last write wins" is the most natural reading. Rejecting both rows was rejected, because the part would then be marked unavailable. | Judgment call | Q3 |
 | A5  | The selection persists across pages and searches, like a cart. | Affects the UI state design. | Open | - |
-| A6  | A quote's quantity may be more than the stock on hand. | Affects validation. | Open | Q7 |
+| A6  | A quote's quantity may be more than the stock on hand, and the quote form then warns with the shortfall and the lead time. | The brief says buyers use lead time while quoting, which matters most when stock is short. A hard cap at stock was considered and rejected, because it would make lead time display-only. | Judgment call | Q7 |
 | A7  | Quotes can't be changed after they are saved. | Keeps the quote model to insert and read only. | Open | - |
 | A8  | The buyer imports by uploading the CSV in the app, so the MVP works end to end from the browser. A CLI calls the same code for development and tests. | Decides the import entry point, and brings in Cloudflare's upload limits (D10). | Judgment call | Q10 |
-| A9  | "Partial part number" means a substring match on the normalized part number. | Decides the search index. | Open | Q5 |
-| A10 | The supplier filter selects one supplier at a time. | Affects the query and indexes. | Open | Q6 |
+| A9  | "Partial part number" means a match anywhere in the normalized part number, with no typo tolerance. | Decides the search index. Typo tolerance was rejected, because ranking by similarity conflicts with sorting by quantity, price, or lead time. | Judgment call | Q5 |
+| A10 | The supplier filter accepts one or more suppliers. | Better for the buyer, but several suppliers make the query and its indexes harder to keep fast (7.3). | Judgment call | Q6 |
 | A11 | All prices use one currency. | Affects storage and display. | Open | Q8 |
 | A12 | The quote list doesn't need pagination, since there is one buyer and few quotes. | Keeps the API small. | Open | - |
 | A13 | Supplier names that differ only in spaces, punctuation, or letter case are the same supplier, displayed with the spelling from that supplier's newest row. | Supplier is part of a part's identity, so treating variants as different suppliers would split one part into several rows. | Judgment call | Q12 |
@@ -563,12 +572,13 @@ The UI only needs to be functional and clear.
 
 - **Q1.** Resolved by C2 and C10.
 - **Q2.** Resolved by C11.
-- **Q3.** If duplicate rows have the same last-updated timestamp, which one wins?
-- **Q4.** If an older file is imported after a newer one, should it overwrite the newer data, or should the newest timestamp per row still win?
-- **Q5.** Does "partial part number" mean a prefix or a match anywhere in the part number?
-- **Q6.** Should the supplier filter allow one supplier or several at once?
-- **Q7.** Can a quote ask for more than the stock on hand?
+- **Q3.** Not asked. Decided by judgment call A4.
+- **Q4.** Not asked. Decided by judgment call A2.
+- **Q5.** Not asked. Decided by judgment call A9.
+- **Q6.** Not asked. Decided by judgment call A10.
+- **Q7.** Not asked. Decided by judgment call A6.
 - **Q8.** What currency and units are used for price and lead time?
+  Profiling (T0.1) should answer this from the data.
 - **Q9.** What latency do buyers expect from "fast"?
 - **Q10.** Not asked. Decided by judgment call A8.
 - **Q11.** Resolved by C12.
@@ -582,19 +592,19 @@ The UI only needs to be functional and clear.
 | #   | Decision | Alternatives considered | Rationale and trade-off | Status |
 | --- | --- | --- | --- | --- |
 | D1  | Use Postgres as the datastore. | None | Required by the brief. | Accepted |
-| D2  | Give `parts` a surrogate `bigint` id, with `UNIQUE (supplier_key, part_number_key)` as the natural key. | A composite natural primary key. | v0.2 used part number as a natural key, and that was reversed when identity became supplier plus part number. A two-column text key would be repeated as the tiebreaker in every sort index, in every quote line, in the API, and in every cursor. An id is a small, stable handle, and it stays stable because rows are never deleted (D14). The unique constraint still enforces "no duplicates" and drives the `MERGE`. The cost is one extra column and index. | Proposed |
-| D3  | Run the whole import in one transaction: staging table, deduplicate, then one `MERGE` that inserts, updates, and marks parts unavailable. | `INSERT ... ON CONFLICT` plus a separate `UPDATE` for missing parts; batched commits with resume checkpoints; truncate and reload; load a new table and swap it in. | This is also the simplest option, because it needs no extra code. A crash rolls everything back, so re-running is the same as running fresh, with no resume logic (C4). Postgres MVCC means the buyer keeps seeing the previous snapshot until commit, never a half-updated catalog (R1.7). `MERGE ... WHEN NOT MATCHED BY SOURCE` covers all three outcomes in one statement, and it doesn't use up an id for every row the way `ON CONFLICT` does. Unlike `ON CONFLICT`, `MERGE` doesn't guard against concurrent inserts, which is fine because the import is the only process that writes to `parts` and the advisory lock prevents two imports at once. The costs are requiring Postgres 17 or later and a long transaction that holds row locks on changed parts until it commits. | Proposed |
-| D4  | Normalize field types in application code; deduplicate and merge in SQL. | Do everything in SQL by `COPY`ing raw text. | A pure normalizer can be unit tested rule by rule and can give a specific reason for each rejected row. SQL handles the set operations without holding the whole file in memory. | Proposed |
-| D5  | Only write rows whose values or availability changed. | Overwrite every row on every import. | Re-running the same file writes nothing, the counts are accurate, and fewer dead rows are left for vacuum. | Proposed |
-| D6  | Keyset (cursor) pagination. | `OFFSET`/`LIMIT`. | Stays fast at any depth, while `OFFSET` gets slower the deeper you go. The cost is no "jump to page N". | Proposed |
-| D7  | Show no exact total count, only whether a next page exists. | Exact `COUNT(*)`; a planner estimate; a capped count. | An exact count over a large filtered result is slow. The buyer is looking for a few matching parts, not a total. Can be revisited if the interviewer wants totals. | Proposed |
-| D8  | Store the supplier as text on `parts`, with a generated `supplier_key`, and write the spelling from the supplier's newest row onto all of its parts. | A separate `suppliers` table (proposed in v0.4); keep each part's own spelling. | Keeps the schema to one catalog table and the import to one `MERGE`. Writing the newest spelling onto every row means the table and the dropdown always agree. The costs are repeating the supplier name on every row, rewriting a supplier's rows when its newest spelling changes, unavailable parts keeping an older spelling, and a supplier list query that scans `parts`. | Proposed |
-| D9  | A quote line stores the part id, quantity, and unit price. | Copy the supplier and part number onto each line too. | Copying the unit price is enough for R3.5. A part's supplier and part number keys never change for its id, so joining for them is safe. | Proposed |
-| D10 | Import by uploading the gzip-compressed CSV to `POST /api/imports`, which responds `202` and runs the import in the background inside the web process. A CLI calls the same function. | CLI only (v0.5); split the file by hand into two uploads; DNS-only Cloudflare to avoid the cap; upload straight to object storage; chunked uploads; run the import inside the request; a separate worker service with pg-boss. | The buyer has to be able to import from the app (A8). Cloudflare Access (D17) needs Cloudflare's proxy, which caps request bodies at 100 MB and expects a response within 100 seconds. Compressing in the browser takes the 126 MB file to about 36 MB with one built-in API and no new infrastructure, and the snapshot stays whole, which C11 depends on. Responding `202` before importing avoids the timeout. Splitting by hand risks importing half a snapshot and marking the other half unavailable. DNS-only loses Cloudflare Access. Object storage and chunking work at any size but add infrastructure or a protocol we don't need at 36 MB. A worker with pg-boss is the better long-term home and is in the backlog (section 12). The costs are that a restart mid-import loses the status (the catalog is safe, because the transaction rolls back) and the buyer has to upload again, and that the cap comes back if the compressed file ever nears 100 MB. | Proposed |
-| D11 | Money is `numeric` in Postgres and a decimal string in JSON. | Floats; integer cents. | Exact values without unit conversions in every layer. | Proposed |
+| D2  | Give `parts` a surrogate `bigint` id, with `UNIQUE (supplier_key, part_number_key)` as the natural key. | A composite natural primary key. | v0.2 used part number as a natural key, and that was reversed when identity became supplier plus part number. A two-column text key would be repeated as the tiebreaker in every sort index, in every quote line, in the API, and in every cursor. An id is a small, stable handle, and it stays stable because rows are never deleted (D14). The unique constraint still enforces "no duplicates" and drives the `MERGE`. The cost is one extra column and index. | Accepted |
+| D3  | Run the whole import in one transaction: staging table, deduplicate, then one `MERGE` that inserts, updates, and marks parts unavailable. | `INSERT ... ON CONFLICT` plus a separate `UPDATE` for missing parts; batched commits with resume checkpoints; truncate and reload; load a new table and swap it in. | This is also the simplest option, because it needs no extra code. A crash rolls everything back, so re-running is the same as running fresh, with no resume logic (C4). Postgres MVCC means the buyer keeps seeing the previous snapshot until commit, never a half-updated catalog (R1.7). `MERGE ... WHEN NOT MATCHED BY SOURCE` covers all three outcomes in one statement, and it doesn't use up an id for every row the way `ON CONFLICT` does. Unlike `ON CONFLICT`, `MERGE` doesn't guard against concurrent inserts, which is fine because the import is the only process that writes to `parts` and the advisory lock prevents two imports at once. The costs are requiring Postgres 17 or later and a long transaction that holds row locks on changed parts until it commits. | Accepted |
+| D4  | Normalize field types in application code; deduplicate and merge in SQL. | Do everything in SQL by `COPY`ing raw text. | A pure normalizer can be unit tested rule by rule and can give a specific reason for each rejected row. SQL handles the set operations without holding the whole file in memory. | Accepted |
+| D5  | Only write rows whose values or availability changed. | Overwrite every row on every import. | Re-running the same file writes nothing, the counts are accurate, and fewer dead rows are left for vacuum. | Accepted |
+| D6  | Keyset (cursor) pagination. | `OFFSET`/`LIMIT`. | Stays fast at any depth, while `OFFSET` gets slower the deeper you go. The cost is no "jump to page N". | Accepted |
+| D7  | Show no exact total count, only whether a next page exists. | Exact `COUNT(*)`; a planner estimate; a capped count. | An exact count over a large filtered result is slow. The buyer is looking for a few matching parts, not a total. Can be revisited if the interviewer wants totals. | Accepted |
+| D8  | Store the supplier as text on `parts`, with a generated `supplier_key`, and write the spelling from the supplier's newest row onto all of its parts. | A separate `suppliers` table (proposed in v0.4); keep each part's own spelling. | Keeps the schema to one catalog table and the import to one `MERGE`. Writing the newest spelling onto every row means the table and the supplier filter always agree. The costs are repeating the supplier name on every row, rewriting a supplier's rows when its newest spelling changes, unavailable parts keeping an older spelling, and a supplier list query that scans `parts`. | Accepted |
+| D9  | A quote line stores the part id, quantity, and unit price. | Copy the supplier and part number onto each line too. | Copying the unit price is enough for R3.5. A part's supplier and part number keys never change for its id, so joining for them is safe. | Accepted |
+| D10 | Import by uploading the gzip-compressed CSV to `POST /api/imports`, which responds `202` and runs the import in the background inside the web process. A CLI calls the same function. | CLI only (v0.5); split the file by hand into two uploads; DNS-only Cloudflare to avoid the cap; upload straight to object storage; chunked uploads; run the import inside the request; a separate worker service with pg-boss. | The buyer has to be able to import from the app (A8). Cloudflare Access (D17) needs Cloudflare's proxy, which caps request bodies at 100 MB and expects a response within 100 seconds. Compressing in the browser takes the 126 MB file to about 36 MB with one built-in API and no new infrastructure, and the snapshot stays whole, which C11 depends on. Responding `202` before importing avoids the timeout. Splitting by hand risks importing half a snapshot and marking the other half unavailable. DNS-only loses Cloudflare Access. Object storage and chunking work at any size but add infrastructure or a protocol we don't need at 36 MB. A worker with pg-boss is the better long-term home and is in the backlog (section 12). The costs are that a restart mid-import loses the status (the catalog is safe, because the transaction rolls back) and the buyer has to upload again, and that the cap comes back if the compressed file ever nears 100 MB. | Accepted |
+| D11 | Money is `numeric` in Postgres and a decimal string in JSON. | Floats; integer cents. | Exact values without unit conversions in every layer. | Accepted |
 | D12 | Stack: Next.js 16 (App Router) with TypeScript (`strict`, `noUncheckedIndexedAccess`) and pnpm on Node.js 24; Drizzle ORM 0.45 with `pg` and `pg-copy-streams`; Zod 4; `csv-parse`; Tailwind CSS 4, shadcn/ui, and TanStack Table; Biome for linting and formatting; Vitest with Testcontainers; `tsx` for CLI scripts; Postgres 17, pinned to `postgres:17.11` locally and in tests; Railway hosting behind Cloudflare. | See `docs/tech-stack-research.md`. For linting, ESLint with Prettier. For data access, postgres.js with raw SQL. | One TypeScript codebase for the UI, API, and importer, with SQL-first data access for the bulk import and Zod at every boundary where untrusted data enters. Biome is one fast tool for linting, formatting, and import order, and Next.js 16 no longer ships `next lint`. | Accepted |
-| D13 | Define key normalization once, as a SQL function used by the generated key columns, import deduplication, search, and the supplier filter. | Normalize in the importer, and separately in the API; separate rules for part numbers and supplier names. | One definition means "the same part", "the same supplier", and "what search matches" can't drift apart. A normalized search term also can't contain `LIKE` wildcards. Part numbers and supplier names share one rule because C10, C12, and A13 define "the same" identically. The cost is that changing the rule needs a migration that rewrites the key columns. | Proposed |
-| D14 | Mark missing parts with an `unavailable_since` timestamp. | Delete them; an `available` boolean. | C11 asks us to record that a part is no longer available, not to remove it. Deleting would also break quotes that reference the part. A timestamp costs the same as a boolean and also records when the part went away. | Proposed |
+| D13 | Define key normalization once, as a SQL function used by the generated key columns, import deduplication, search, and the supplier filter. | Normalize in the importer, and separately in the API; separate rules for part numbers and supplier names. | One definition means "the same part", "the same supplier", and "what search matches" can't drift apart. A normalized search term also can't contain `LIKE` wildcards. Part numbers and supplier names share one rule because C10, C12, and A13 define "the same" identically. The cost is that changing the rule needs a migration that rewrites the key columns. | Accepted |
+| D14 | Mark missing parts with an `unavailable_since` timestamp. | Delete them; an `available` boolean. | C11 asks us to record that a part is no longer available, not to remove it. Deleting would also break quotes that reference the part. A timestamp costs the same as a boolean and also records when the part went away. | Accepted |
 | D15 | Serve a JSON API under `/api` with Route Handlers, which call plain functions in `src/server/`. | Server Components that query the database directly, with Server Actions for writes. | The interviewer asked for routes with a justified design (C9). An explicit API lets the UI workstream build against mocks in parallel. Since the UI matters least (C8), every requirement can also be demonstrated with plain HTTP requests. Keeping the logic in plain functions means it can be tested without HTTP. The cost is client-side data fetching for the table and one more layer than Server Components would need. | Accepted |
 | D16 | Each workstream writes Vitest tests for its own code against Postgres 17 in Testcontainers. Playwright browser tests are deferred. | Defer all tests; a shared Docker Compose test database; an in-memory fake Postgres. | Tests are how parallel agents prove their "done when" lists without waiting for each other, so they add no serial time. Testcontainers gives every test run its own database, so agents in separate worktrees can't clobber each other's data or ports. `COPY`, `MERGE`, and trigram search need a real Postgres. The costs are needing Docker and a few seconds of startup per test run. | Accepted |
 | D17 | Put the deployed site behind Cloudflare Access. | Build a login into the app; a public URL; DNS-only Cloudflare. | C5 means no auth in the app, but a public URL would let anyone import files or create quotes. Access adds a login at the edge with no app code. It needs Cloudflare's proxy, which brings the upload limits that D10 works around. | Accepted |
@@ -678,6 +688,7 @@ T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
   - Importing the night 1 fixture, then the night 2 fixture, produces exactly the expected database state after each.
   - Part number variants that differ only in spaces, punctuation, or case collapse into one part, and the newest timestamp wins.
   - Supplier name variants collapse into one supplier, and all of its parts in the file show the spelling from its newest row.
+  - When duplicates share a timestamp, the row later in the file wins (A4).
   - Parts missing from night 2 are marked unavailable, and parts that come back are available again.
   - A second import of the same file reports nothing inserted, updated, or newly unavailable, and a checksum over `parts` doesn't change.
   - Killing the process mid-import leaves the database unchanged, and re-running it produces the same state as an uninterrupted run.
@@ -695,8 +706,9 @@ T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
 - **Done when:**
   - Integration tests prove that paging over every sort and direction never repeats or skips a row, including across tied and missing values.
   - Integration tests prove that search and the supplier filter ignore spaces, punctuation, and case, and that `%` and `_` in a search term never act as wildcards.
+  - Integration tests prove that filtering by several suppliers returns exactly the parts of those suppliers.
   - Integration tests prove that unavailable parts are returned with their `unavailableSince` value.
-  - Every benchmark combination and the supplier list meet NFR1, and the results table is in section 11.
+  - Every benchmark combination and the supplier list meet NFR1, and the results table, including the `OFFSET` comparison, is in section 11.
 
 **WS-C Quotes API** (R3 server side)
 
@@ -705,6 +717,7 @@ T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
 - **Delivers:** `POST /api/quotes`, `GET /api/quotes`, and `GET /api/quotes/:id`.
 - **Done when:**
   - Integration tests cover every validation rule in R3.2, each returning `400`, including unavailable parts.
+  - A quantity above the part's stock, including for a part with no stock, is accepted (A6).
   - A failed line insert leaves no quote behind.
   - A checksum over `parts` is unchanged after creating a quote (R3.4).
   - Changing a part's price, or marking it unavailable, after a quote is saved leaves the quote unchanged (R3.5).
@@ -714,8 +727,8 @@ T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
 - **Owns:** everything under `src/app/` except `src/app/api/`, and `src/components/`.
 - **Reads:** sections 2, 7.4, and 7.5.
 - **Builds against** the Zod contracts and the JSON fixtures from T0.3, mocking the API until WS-A, WS-B, and WS-C land.
-- **Done when:** against the mocks, the buyer can upload a file and see the import summary, search, filter, sort, page, select across pages, create a quote, and see it in the list and detail pages.
-  Loading, empty, and error states are handled, and unavailable parts are dimmed, labeled, and not selectable.
+- **Done when:** against the mocks, the buyer can upload a file and see the import summary, search, filter by one or more suppliers, sort, page, select across pages, create a quote, and see it in the list and detail pages.
+  Loading, empty, and error states are handled, unavailable parts are dimmed, labeled, and not selectable, and a quote line above stock shows the shortfall and lead time warning.
 - **Out of scope:** visual polish beyond clean and usable, and Playwright tests (section 12).
 
 **WS-E Deploy** (G5, lowest priority)
@@ -750,8 +763,17 @@ T0.2 Scaffold ------+                            +--> WS-B Parts query ----+
 
 ### Talking points
 
-- **Judgment calls made without asking the interviewer:** A8 (import from the app), A13 (supplier name variants are the same supplier, shown under the newest spelling), and A14 (unavailable parts stay visible but can't be quoted).
-  State these up front, with the reasoning.
+- **Judgment calls made without asking the interviewer:** state these up front, with the reasoning.
+  - A2: the latest import always wins, even if it's an older file.
+  - A4: when duplicates share a timestamp, the later row in the file wins.
+  - A6: quotes may exceed stock, with a warning that shows the lead time.
+  - A8: the import runs from the app.
+  - A9: search matches anywhere in the part number, with no typo tolerance.
+  - A10: the supplier filter accepts several suppliers.
+  - A13: supplier name variants are the same supplier, shown under the newest spelling.
+  - A14: unavailable parts stay visible but can't be quoted.
+- **Keyset over page numbers (D6, D7):** show the benchmark's `OFFSET` versus keyset timing at a deep page.
+- **Quoting beyond stock (A6):** the rule was first a hard cap at stock, then changed so lead time stays useful for quoting, as the brief describes.
 - **Crash safety for free:** one transaction (D3) is the simplest import design and also the one that makes re-running after a crash safe and keeps the buyer from ever seeing a half-applied import.
 - **Working within Cloudflare's limits:** compressing in the browser and responding `202` (D10) instead of splitting the file, dropping Cloudflare Access, or adding object storage and a job queue.
 - **A decision that changed when the requirements did:** D2 moved from a natural key to a surrogate id when identity became supplier plus part number.
